@@ -7,7 +7,7 @@ name = "orthocache-gpu"
 version = "0.1.0"
 description = "OrthoCache: Hardware-Native Multi-Band Spectral Attention Block Eviction — GPU/Triton Edition"
 readme = "README.md"
-license = {text = "PolyForm Noncommercial 1.0.0"}
+license = {text = "AGPL-3.0-or-later"}
 requires-python = ">=3.10"
 authors = [
     {name = "Justin Arndt", email = "justinarndt05@gmail.com"},

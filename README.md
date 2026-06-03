@@ -114,6 +114,10 @@ The mathematical guarantees (Parseval identity, exponential TV bound) apply to b
 
 ## License
 
-**[PolyForm Noncommercial License 1.0.0](../LICENSE)**
+**[GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE)**
+
+Free to use, modify, and redistribute under AGPL-3.0 terms. Network service deployment requires source code disclosure under the same license.
+
+**Commercial licensing** — for proprietary use without AGPL copyleft obligations — is available separately.
 
 📧 **Commercial licensing:** [justinarndt05@gmail.com](mailto:justinarndt05@gmail.com)
