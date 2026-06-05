@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+type: software
+title: "OrthoCache GPU: Hardware-Native Multi-Band Spectral Attention Block Eviction"
+authors:
+  - family-names: "Arndt"
+    given-names: "Justin"
+    email: "justinarndt05@gmail.com"
+version: "0.1.0"
+date-released: "2026-06-05"
+license: AGPL-3.0-only
+url: "https://github.com/j-arndt/orthocache-gpu"
+repository-code: "https://github.com/j-arndt/orthocache-gpu"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.20518370"
+    description: "Zenodo archive of OrthoCache"
+keywords:
+  - "KV-cache eviction"
+  - "attention"
+  - "Walsh-Hadamard Transform"
+  - "GPU"
+  - "Triton"
+  - "spectral analysis"
+  - "transformer inference"
+abstract: >-
+  OrthoCache is a hardware-native KV-cache eviction algorithm that uses
+  Walsh–Hadamard spectral analysis to identify and skip semantically
+  redundant attention blocks in O(1) SRAM. The GPU/Triton edition
+  includes a fused Split-K kernel that achieves 15× speedup over standard
+  attention at 32K token context on consumer GPUs (RTX 4060), with
+  sub-linear latency scaling from 4K to 32K tokens.

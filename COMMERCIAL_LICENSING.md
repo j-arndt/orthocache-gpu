@@ -35,7 +35,7 @@ This includes:
 For commercial licensing inquiries, including volume pricing, OEM agreements, and
 enterprise support, please contact:
 
-📧 **[Contact email to be added]**
+📧 **[justinarndt05@gmail.com](mailto:justinarndt05@gmail.com)**
 
 ## Dual-License Model
 

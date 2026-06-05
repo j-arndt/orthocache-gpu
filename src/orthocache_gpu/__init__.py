@@ -9,6 +9,47 @@ ratio, TV distance bound) is identical; the runtime targets PyTorch/Triton/CUDA.
 
 __version__ = "0.1.0"
 
+__all__ = [
+    # Version
+    "__version__",
+    # FWHT
+    "fwht_512",
+    # Spectral Energy
+    "compute_block_energy",
+    "compute_spectral_bands",
+    "compute_spectral_decay_ratio",
+    "compute_query_aware_bounds",
+    "compute_query_aware_mask",
+    "compute_multiband_mask",
+    "generate_threshold_mask",
+    # Lean Attention
+    "lean_bucketed_attention",
+    # Stream Compaction
+    "stream_compact",
+    "stream_decompact",
+    "compact_and_attend",
+    # Adaptive Attention
+    "orthocache_attention",
+    "orthocache_attention_batched",
+    # Pipeline
+    "orthocache_forward",
+    # Bandwidth Model
+    "ici_bytes_per_step",
+    "ici_bandwidth_table",
+    "model_configs",
+    # Perfect Eviction
+    "classify_eviction",
+    "perfect_eviction_check",
+    "compute_block_beta",
+    "EvictionRegime",
+    "EvictionMetadata",
+    # Triton Kernels
+    "triton_fwht_eviction",
+    "generate_walsh_matrix",
+    "fused_orthocache_attention",
+    "fused_orthocache_attention_v2",
+]
+
 # ── Core: Walsh–Hadamard Transform ──────────────────────────────────
 from orthocache_gpu.fwht import fwht_512
 

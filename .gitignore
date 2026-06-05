@@ -50,3 +50,5 @@ task.md
 walkthrough.md
 walkthrough2.md
 novelty_monetization_report.md
+benchmarks/debug_spectral_separation.py
+benchmarks/quick_splitk_test.py
