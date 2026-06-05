@@ -71,12 +71,81 @@ orthocache-gpu/
 │       ├── bandwidth_model.py       # NVLink/ICI bandwidth model (H100, B200, TPU)
 │       └── triton_kernels/
 │           ├── __init__.py
-│           ├── sparse_attention.py  # Triton block-sparse attention kernel
-│           └── indirect_attention.py # Triton indirect indexing kernel
-├── tests/                           # PyTest test suite
-├── benchmarks/                      # GPU benchmarks
+│           ├── sparse_attention.py   # Triton block-sparse attention kernel
+│           ├── indirect_attention.py # Triton indirect indexing kernel
+│           ├── fwht_fused_prototype.py # FWHT spectral eviction (TILE_SIZE=64)
+│           └── fused_eviction.py     # God Kernel: fused FWHT+ζ+attention
+├── tests/                           # PyTest test suite (92+ tests)
+├── benchmarks/
+│   ├── profiling.py                 # Phase C/D latency benchmarks
+│   ├── profile_fusion.py            # Phase 7 God Kernel profiling sweep
+│   ├── generate_figures.py          # Phase C/D publication figures
+│   └── generate_fusion_figures.py   # Phase 7 publication figures
 ├── pyproject.toml                   # Build configuration
 └── README.md                        # ← You are here
+```
+
+───────────────────────────────────────────────────────────────────────
+
+## Phase 7: Fused God Kernel
+
+The **Fused God Kernel** is the capstone optimization: FWHT spectral analysis + ζ eviction + predicated attention in a **single Triton kernel launch**. K is loaded from HBM once and reused in-SRAM for both spectral scoring and attention computation, eliminating the redundant K reload required by the unfused two-kernel approach.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│              God Kernel (1 launch)          │
+│                                             │
+│  for each tile t in [0, num_tiles):         │
+│    ┌──────────────────────────────────────┐ │
+│    │  Phase A: Spectral Eviction         │ │
+│    │  K_tile ← HBM[t]      (32 KB SRAM) │ │
+│    │  S = W₆₄ · K_tile     (in-SRAM)    │ │
+│    │  ζ = ‖S_high‖ / ‖S_low‖            │ │
+│    │  if ζ > ζ_max: SKIP (branch elim)  │ │
+│    ├──────────────────────────────────────┤ │
+│    │  Phase B: Predicated Attention      │ │
+│    │  (K_tile still in SRAM — no reload) │ │
+│    │  logits += Q · K_tile^T             │ │
+│    │  V_tile ← HBM[t]      (32 KB SRAM) │ │
+│    │  acc += softmax(logits) · V_tile    │ │
+│    └──────────────────────────────────────┘ │
+│                                             │
+│  SRAM Budget (peak): 81 KB < 100 KB/SM ✓   │
+└─────────────────────────────────────────────┘
+```
+
+### Benchmark Results (RTX 4060 Laptop, SM 8.9)
+
+| Metric | Value |
+|:-------|:------|
+| DRAM reduction vs unfused | **−33%** (K loaded once instead of twice) |
+| SRAM budget (peak) | **81 KB** < 100 KB/SM limit |
+| Fused vs Unfused speedup (1K tokens) | **3.06×** |
+| Fused vs Unfused crossover | **~4K tokens** |
+
+### Usage
+
+```python
+from orthocache_gpu import fused_orthocache_attention
+
+# Single-head decode attention with spectral eviction
+output, metadata = fused_orthocache_attention(
+    q,          # (1, 128) query
+    keys,       # (seq_len, 128) key cache
+    values,     # (seq_len, 128) value cache
+    zeta_max=5.0,
+)
+
+# Or via the pipeline API (multi-head)
+from orthocache_gpu import orthocache_forward
+
+output, metadata = orthocache_forward(
+    q, keys, values,
+    mode='triton_fused',
+    zeta_max=5.0,
+)
 ```
 
 ───────────────────────────────────────────────────────────────────────

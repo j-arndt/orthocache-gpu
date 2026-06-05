@@ -48,3 +48,23 @@ from orthocache_gpu.bandwidth_model import (
     ici_bandwidth_table,
     model_configs,
 )
+
+# ── Eviction: Perfect Eviction Governor ─────────────────────────────
+from orthocache_gpu.perfect_eviction import (
+    classify_eviction,
+    perfect_eviction_check,
+    compute_block_beta,
+    EvictionRegime,
+    EvictionMetadata,
+    FLOAT32_UNDERFLOW_THRESHOLD,
+    BFLOAT16_UNDERFLOW_THRESHOLD,
+)
+
+# ── Triton: Fused God Kernel (Phase 7) ──────────────────────────────
+from orthocache_gpu.triton_kernels.fwht_fused_prototype import (
+    triton_fwht_eviction,
+    generate_walsh_matrix,
+)
+from orthocache_gpu.triton_kernels.fused_eviction import (
+    fused_orthocache_attention,
+)

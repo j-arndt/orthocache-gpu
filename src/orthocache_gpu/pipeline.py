@@ -58,8 +58,8 @@ def orthocache_forward(
               evicted blocks before attention. Recommended.
             - 'dense': Full dense attention (baseline). Ignores all
               eviction logic. For comparison only.
-            - 'triton_fused': Placeholder for Triton fused kernel.
-              Not implemented yet — raises NotImplementedError.
+            - 'triton_fused': Phase 7 God Kernel. Fused FWHT + ζ + attention
+              in a single Triton kernel launch. Uses TILE_SIZE=64.
 
     Returns:
         Tuple of (output, metadata):
@@ -89,12 +89,40 @@ def orthocache_forward(
         metadata['eviction_rate'] = 0.0
         return output, metadata
 
-    # --- Triton fused placeholder ---
+    # --- Triton fused: God Kernel (Phase 7) ---
     if mode == 'triton_fused':
-        raise NotImplementedError(
-            "mode='triton_fused' is not implemented yet. "
-            "Use mode='compact' or mode='dense'."
+        from orthocache_gpu.triton_kernels.fused_eviction import (
+            fused_orthocache_attention as _fused_attn,
         )
+        t0 = time.perf_counter()
+
+        # The God Kernel operates on single-head data with TILE_SIZE=64.
+        # Process each head independently and stack the results.
+        outputs = []
+        total_retained = 0
+        for h in range(num_heads):
+            q_h = q[:, h, :]         # (seq_len_q, head_dim)
+            k_h = keys[:, h, :]      # (seq_len_k, head_dim)
+            v_h = values[:, h, :]    # (seq_len_k, head_dim)
+            out_h, meta_h = _fused_attn(q_h, k_h, v_h, zeta_max=zeta_max)
+            outputs.append(out_h)
+            total_retained += meta_h.get('tiles_retained', 0)
+
+        # Stack: list of (seq_len_q, head_dim) → (seq_len_q, num_heads, head_dim)
+        output = torch.stack(outputs, dim=1)
+
+        avg_retained = total_retained / max(1, num_heads)
+        tile_size = 64  # God Kernel tile size
+        num_tiles_fused = seq_len_k // tile_size
+        eviction_rate = 1.0 - (avg_retained / max(1, num_tiles_fused))
+
+        metadata['latency_ms'] = (time.perf_counter() - t0) * 1000
+        metadata['eviction_rate'] = eviction_rate
+        metadata['tiles_retained_avg'] = avg_retained
+        metadata['tile_size_fused'] = tile_size
+        metadata['num_tiles_fused'] = num_tiles_fused
+        return output, metadata
+
 
     # --- Spectral analysis ---
     t_spectral = time.perf_counter()
@@ -131,6 +159,44 @@ def orthocache_forward(
     metadata['blocks_retained'] = int(blocks_retained.item())
     metadata['blocks_evicted'] = int(num_blocks - blocks_retained.item())
     metadata['eviction_rate'] = float(1.0 - blocks_retained.item() / num_blocks)
+
+    # --- Perfect Eviction Classification ---
+    # Classify evicted blocks into deterministic (TV=0) and statistical regimes
+    try:
+        from orthocache_gpu.perfect_eviction import classify_eviction
+        from orthocache_gpu.spectral_energy import compute_block_energy
+
+        block_energies = compute_block_energy(keys, block_size)
+
+        # Compute z_max from retained logits (approximate via query-key max)
+        scale = torch.sqrt(torch.tensor(float(head_dim), device=q.device))
+        with torch.no_grad():
+            # Sample max logit from retained blocks for z_max estimation
+            unified_mask_for_zmax = torch.any(block_mask, dim=-1)  # (num_blocks,)
+            if unified_mask_for_zmax.any():
+                # Use the max logit bound as a z_max proxy
+                from orthocache_gpu.spectral_energy import compute_query_aware_bounds
+                all_bounds = compute_query_aware_bounds(q, keys, block_size)
+                max_bounds = torch.max(all_bounds, dim=0).values  # (num_blocks, num_heads)
+                retained_bounds = max_bounds[unified_mask_for_zmax]
+                z_max_estimate = torch.max(retained_bounds)
+            else:
+                z_max_estimate = torch.tensor(0.0, device=q.device)
+
+        eviction_meta = classify_eviction(
+            q, block_energies, z_max_estimate, block_mask, head_dim
+        )
+        metadata['perfect_eviction_blocks'] = eviction_meta.num_perfect
+        metadata['statistical_eviction_blocks'] = eviction_meta.num_statistical
+        metadata['perfect_eviction_rate'] = (
+            eviction_meta.num_perfect / max(1, num_blocks - int(blocks_retained.item()))
+            if num_blocks > int(blocks_retained.item()) else 0.0
+        )
+    except ImportError:
+        # perfect_eviction module not available — skip classification
+        metadata['perfect_eviction_blocks'] = None
+        metadata['statistical_eviction_blocks'] = None
+        metadata['perfect_eviction_rate'] = None
 
     # --- Attention ---
     t_attn = time.perf_counter()
