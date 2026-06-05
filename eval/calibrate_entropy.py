@@ -20,7 +20,8 @@ print(f"Calibrating entropy for {MODEL_PATH}, max_length={MAX_LENGTH}")
 # Load model
 tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH)
 model = AutoModelForCausalLM.from_pretrained(
-    MODEL_PATH, dtype=torch.float32
+    MODEL_PATH, dtype=torch.float32,
+    attn_implementation="eager",
 )
 model.eval()
 
@@ -35,7 +36,7 @@ all_entropies = []
 layer_entropies = {l: [] for l in patched_layers}
 
 with torch.no_grad():
-    for i, (input_ids, target_ids) in enumerate(windows[:5]):
+    for i, input_ids in enumerate(windows[:5]):
         input_ids = input_ids.unsqueeze(0)
         outputs = model(input_ids, output_attentions=True)
         
