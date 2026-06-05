@@ -31,52 +31,71 @@ from eval.perplexity_eval import (
     ResidualGovernor,
 )
 
+# Padding to ensure prompts are >= 128 tokens for spectral path activation
+CONTEXT_PAD = (
+    "The following is a passage of text containing various facts and statements. "
+    "Please read it carefully and answer the question that follows. "
+    "This additional context ensures the sequence length exceeds the minimum "
+    "tile size of 64 tokens required for spectral analysis. "
+    "The spectral decomposition operates on fixed-size tiles of the key-value cache, "
+    "analyzing the high-frequency energy content of each tile to determine whether "
+    "it contains meaningful information or noise. "
+)
+
 
 # ============================================================================
 # Test Prompts
 # ============================================================================
 
 FACTUAL_PROMPTS = [
-    # Facts the model knows from training
+    CONTEXT_PAD +
     "The Eiffel Tower is located in Paris, France. It was built in 1889 for the World's Fair. "
     "The tower is 324 metres tall and was the tallest man-made structure in the world until 1930. "
     "Question: Where is the Eiffel Tower located? Answer: The Eiffel Tower is located in",
 
+    CONTEXT_PAD +
     "Water has the chemical formula H2O. It consists of two hydrogen atoms bonded to one oxygen atom. "
     "Water freezes at 0 degrees Celsius and boils at 100 degrees Celsius at standard atmospheric pressure. "
     "Question: What is the chemical formula of water? Answer: The chemical formula of water is",
 
+    CONTEXT_PAD +
     "The speed of light in a vacuum is approximately 299,792,458 metres per second. "
     "This constant is fundamental to physics and is denoted by the letter c. "
     "Question: What is the speed of light? Answer: The speed of light is approximately",
 
+    CONTEXT_PAD +
     "Python is a high-level programming language created by Guido van Rossum. "
     "It was first released in 1991 and emphasizes code readability with significant whitespace. "
     "Question: Who created Python? Answer: Python was created by",
 
+    CONTEXT_PAD +
     "The human heart has four chambers: two atria and two ventricles. "
     "The right side pumps blood to the lungs, while the left side pumps blood to the body. "
     "Question: How many chambers does the human heart have? Answer: The human heart has",
 ]
 
 HALLUCINATION_PROMPTS = [
-    # Fabricated facts the model CANNOT find in context
+    CONTEXT_PAD +
     "The Glorpnax Corporation was founded in 2019 in New Zolandra by CEO Thrumbus McFinkle. "
     "It specializes in quantum florbination for industrial moldavite processing. "
     "Question: What year was the Glorpnax Corporation's revenue target for q4? Answer: The Glorpnax Corporation's q4 revenue target was",
 
+    CONTEXT_PAD +
     "Professor Xanthium Belverdere published the seminal paper on chromatic destabilization in 2017. "
     "His research at the University of Krendalia showed that destabilization occurs at 47.3 kelvin. "
     "Question: What was Professor Belverdere's h-index in 2022? Answer: Professor Belverdere's h-index was",
 
+    CONTEXT_PAD +
     "The Trantulian Protocol requires all member states to submit biannual reports on zephyrite emissions. "
     "Non-compliance results in sanctions under Article 47b of the Trantulian Charter. "
     "Question: How many countries have ratified the Trantulian Protocol? Answer: The number of countries that ratified is",
 
+    CONTEXT_PAD +
     "FluxoMatic 3000 is an enterprise software platform for managing distributed cronkite pipelines. "
     "Version 7.2 introduced the breakthrough NeuroPlex engine for real-time thrombosis calculation. "
     "Question: What is the maximum throughput of FluxoMatic 3000 version 7.2? Answer: The maximum throughput is",
 
+    CONTEXT_PAD +
     "The island nation of Meridisia has a population of 2.3 million and uses the Meridisian Drachma. "
     "Its capital city, Port Aurelia, is famous for the Grand Basilica of Saint Thornmund. "
     "Question: What is the GDP per capita of Meridisia? Answer: The GDP per capita of Meridisia is",
@@ -174,16 +193,10 @@ def run_hallucination_eval(
             if governor is not None:
                 reset_handle.remove()
             
-            # Unpatch
-            model_fresh = AutoModelForCausalLM.from_pretrained(
-                model_path, dtype=torch.float32,
-                device_map=device.type if device.type == 'cuda' else None,
-            )
-            if device.type != 'cuda':
-                model_fresh = model_fresh.to(device)
-            # Re-assign for next iteration
-            # (model variable in outer scope won't change, but we
-            #  need to re-patch each time anyway)
+            # Print token count for debugging
+            if not h_scores:
+                print(f"  [{label} {i+1}] SKIPPED (seq_len={input_ids.shape[1]}, "
+                      f"< 64 tiles, fell back to dense attention)")
 
     print(f"\n{'='*60}")
     print(f"FACTUAL PROMPTS (expected H_score ~ 1)")

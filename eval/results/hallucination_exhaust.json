@@ -1,0 +1,14 @@
+{
+  "factual_scores": [
+    0.04167124687439501
+  ],
+  "factual_q_intensity": [
+    17.017776489257812
+  ],
+  "factual_k_density": [
+    428.5010681152344
+  ],
+  "hallucination_scores": [],
+  "hallucination_q_intensity": [],
+  "hallucination_k_density": []
+}
