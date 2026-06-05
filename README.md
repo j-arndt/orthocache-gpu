@@ -5,7 +5,7 @@
 <h1 align="center">OrthoCache GPU</h1>
 
 <p align="center">
-  <strong>Spectral KV-Cache Eviction for NVIDIA GPUs — Fused Walsh–Hadamard Attention with Split-K Parallelization</strong>
+  <strong>Spectral KV-Cache Eviction for NVIDIA GPUs — Fused Walsh–Hadamard Attention with Split-K Parallelization and GQA Cauchy-Schwarz Consensus</strong>
 </p>
 
 <p align="center">
@@ -105,6 +105,30 @@ output, metadata = fused_orthocache_attention(
 )
 ```
 
+### GQA / MQA Attention (Phase 7c — Cauchy-Schwarz Gate)
+
+For models using Grouped-Query Attention (LLaMA-3, Mistral, Gemma), the V3 kernel replaces the blind ζ threshold with a **query-aware Cauchy-Schwarz spectral gate**:
+
+```python
+from orthocache_gpu.triton_kernels.gqa_eviction import fused_orthocache_attention_v3_gqa
+
+# G query heads share each KV head (e.g., LLaMA-3: G=4, Mistral: G=4)
+output, metadata = fused_orthocache_attention_v3_gqa(
+    q,          # (num_query_heads, head_dim) — all query heads
+    keys,       # (num_kv_heads, seq_len, head_dim) — key cache
+    values,     # (num_kv_heads, seq_len, head_dim) — value cache
+    tau=1.0,    # Cauchy-Schwarz threshold
+    num_query_groups=4,  # G — queries per KV head
+)
+# Eviction decision: max_g(‖Q_g‖₂ · ‖K_high‖_F) ≤ τ
+```
+
+**Why Cauchy-Schwarz instead of naive consensus?** A passive consensus protocol ("evict only if ALL query heads agree") cripples eviction rates from 50% to ~20%. The Cauchy-Schwarz gate evaluates the **actual spectral alignment** between each query and the K tile's high-frequency band. Query heads with no high-frequency energy have a near-zero Cauchy-Schwarz multiplier, neutralizing their veto.
+
+**Mathematical guarantee** ([formally verified in Lean 4](#lean-4-formal-verification)):
+
+$$\max_{g \in [1, G]} \left( \|Q_{g, \text{high}}\|_2 \cdot \|K_{\text{high}}\|_2 \right) \le \tau \implies \text{tile eviction is safe for ALL } G \text{ heads}$$
+
 ---
 
 ## Architecture
@@ -195,7 +219,7 @@ In real LLM inference, eviction is **non-uniform**: the system prompt (first ~50
 | Compilation | XLA/HLO | `torch.compile` |
 | Framework | JAX | PyTorch |
 
-The mathematical guarantees (Parseval identity, exponential TV bound) are properties of the algorithm, not the hardware.
+The mathematical guarantees (Parseval identity, exponential TV bound, Cauchy-Schwarz spectral gate) are properties of the algorithm, not the hardware.
 
 ---
 
@@ -209,6 +233,11 @@ The mathematical guarantees are formally verified in [Lean 4](https://leanprover
 | [`ParsevalWHT.lean`](proofs/OrthoCacheMath/ParsevalWHT.lean) | `parseval_WHT` | ‖H_n · x‖² = 2ⁿ · ‖x‖² (energy preservation) |
 | [`TruncationBound.lean`](proofs/OrthoCacheMath/TruncationBound.lean) | `orthocache_truncation_bound` | TV(α, α̂) ≤ \|S^c\| · exp(β − z_max) |
 | [`QuantizedTruncation.lean`](proofs/OrthoCacheMath/QuantizedTruncation.lean) | `perfect_eviction_tv_zero` | When z_max − β ≥ 88.72, TV = 0 exactly |
+| [`CauchySchwarzGate.lean`](proofs/OrthoCacheMath/CauchySchwarzGate.lean) | `inner_eq_spectral_inner` | ⟨q, k⟩ = ⟨Hq, Hk⟩ / 2ⁿ (spectral inner product) |
+| [`CauchySchwarzGate.lean`](proofs/OrthoCacheMath/CauchySchwarzGate.lean) | `subband_decomposition` | ⟨v, w⟩ = ⟨v_low, w_low⟩ + ⟨v_high, w_high⟩ |
+| [`CauchySchwarzGate.lean`](proofs/OrthoCacheMath/CauchySchwarzGate.lean) | `spectral_gate_criterion` | \|⟨Q̂_high, K̂_high⟩\| ≤ ‖Q̂_high‖₂ · τ |
+| [`GQAMonotonicity.lean`](proofs/OrthoCacheMath/GQAMonotonicity.lean) | `gqa_eviction_safe` | sup_g \|⟨Q̂_g, K̂⟩_high\| ≤ τ (group safety) |
+| [`GQAMonotonicity.lean`](proofs/OrthoCacheMath/GQAMonotonicity.lean) | `gqa_spectral_gate` | ‖Q̂_g_high‖ ≤ τ_q ∧ ‖K̂_high‖ ≤ τ_k → sup ≤ τ_q·τ_k |
 
 These proofs are **algorithm-generic** — they hold over ℝ and general matrices, with no GPU or TPU specifics. The IEEE 754 underflow threshold (88.72) applies identically to all float32 hardware.
 
@@ -245,15 +274,18 @@ orthocache-gpu/
 │   ├── bandwidth_model.py            # Multi-GPU bandwidth model
 │   ├── perfect_eviction.py           # Eviction regime classifier
 │   └── triton_kernels/
-│       ├── fused_eviction.py         # Split-K God Kernel + V1 sequential
+│       ├── fused_eviction.py         # V2 Split-K God Kernel + V1 sequential
+│       ├── gqa_eviction.py           # V3 GQA Cauchy-Schwarz spectral gate
 │       ├── sparse_attention.py       # Block-sparse attention kernel
 │       ├── indirect_attention.py     # Indirect indexing kernel
 │       └── fwht_fused_prototype.py   # FWHT spectral eviction (TILE=64)
-├── proofs/                           # Lean 4 formal verification
+├── proofs/                           # Lean 4 formal verification (5 modules)
 │   ├── OrthoCacheMath/
 │   │   ├── ParsevalWHT.lean          # WHT orthogonality + Parseval's identity
 │   │   ├── TruncationBound.lean      # Exponential TV bound
-│   │   └── QuantizedTruncation.lean  # IEEE 754 perfect eviction
+│   │   ├── QuantizedTruncation.lean  # IEEE 754 perfect eviction
+│   │   ├── CauchySchwarzGate.lean    # Walsh-domain Cauchy-Schwarz bound
+│   │   └── GQAMonotonicity.lean      # GQA group safety theorem
 │   ├── lakefile.lean                 # Lean 4 build config (Mathlib dep)
 │   └── lean-toolchain                # leanprover/lean4:v4.8.0
 ├── paper/
@@ -262,7 +294,7 @@ orthocache-gpu/
 │   ├── mathematical_framework.md     # Formal math reference
 │   ├── technical_report.md           # GPU architecture + benchmarks
 │   └── cost_benefit_analysis.md      # Fleet economics + consumer analysis
-├── tests/                            # 47 tests (14 test files)
+├── tests/                            # 59 tests (16 test files)
 ├── benchmarks/
 │   ├── profiling.py                  # Latency sweep benchmarks
 │   ├── profile_fusion.py             # Fused kernel profiling (single-head)
