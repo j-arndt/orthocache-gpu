@@ -52,3 +52,16 @@ walkthrough2.md
 novelty_monetization_report.md
 benchmarks/debug_spectral_separation.py
 benchmarks/quick_splitk_test.py
+
+# LaTeX build artifacts
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.synctex.gz
+
+# Lean 4 build cache
+proofs/.lake/

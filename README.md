@@ -12,7 +12,6 @@
   <a href="https://www.python.org/downloads/"><img alt="Python 3.10+" src="https://img.shields.io/badge/python-3.10%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://pytorch.org/"><img alt="PyTorch 2.5+" src="https://img.shields.io/badge/PyTorch-%E2%89%A52.5-ee4c2c?logo=pytorch&logoColor=white" /></a>
   <a href="https://triton-lang.org/"><img alt="Triton 3.0+" src="https://img.shields.io/badge/Triton-%E2%89%A53.0-7B68EE" /></a>
-  <a href="https://doi.org/10.5281/zenodo.20518370"><img alt="DOI" src="https://zenodo.org/badge/DOI/10.5281/zenodo.20518370.svg" /></a>
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-green" /></a>
 </p>
 
@@ -174,6 +173,37 @@ The mathematical guarantees (Parseval identity, exponential TV bound) are proper
 
 ---
 
+## Lean 4 Formal Verification
+
+The mathematical guarantees are formally verified in [Lean 4](https://leanprover.github.io/) with Mathlib:
+
+| Proof Module | Theorem | Description |
+|:---|:---|:---|
+| [`ParsevalWHT.lean`](proofs/OrthoCacheMath/ParsevalWHT.lean) | `WHT_orthogonal` | H_nᵀ · H_n = 2ⁿ · I (orthogonality) |
+| [`ParsevalWHT.lean`](proofs/OrthoCacheMath/ParsevalWHT.lean) | `parseval_WHT` | ‖H_n · x‖² = 2ⁿ · ‖x‖² (energy preservation) |
+| [`TruncationBound.lean`](proofs/OrthoCacheMath/TruncationBound.lean) | `orthocache_truncation_bound` | TV(α, α̂) ≤ \|S^c\| · exp(β − z_max) |
+| [`QuantizedTruncation.lean`](proofs/OrthoCacheMath/QuantizedTruncation.lean) | `perfect_eviction_tv_zero` | When z_max − β ≥ 88.72, TV = 0 exactly |
+
+These proofs are **algorithm-generic** — they hold over ℝ and general matrices, with no GPU or TPU specifics. The IEEE 754 underflow threshold (88.72) applies identically to all float32 hardware.
+
+```bash
+# Verify proofs (requires Lean 4 + Mathlib)
+cd proofs && lake build
+```
+
+---
+
+## Documentation
+
+| Document | Description |
+|:---|:---|
+| [`docs/mathematical_framework.md`](docs/mathematical_framework.md) | Rigorous mathematical reference: spectral energy, truncation bounds, Split-K correctness |
+| [`docs/technical_report.md`](docs/technical_report.md) | GPU kernel architecture, benchmark methodology, performance analysis |
+| [`docs/cost_benefit_analysis.md`](docs/cost_benefit_analysis.md) | NVIDIA fleet economics, consumer GPU analysis, cloud cost impact |
+| [`paper/orthocache_gpu.tex`](paper/orthocache_gpu.tex) | GPU-specific paper (IEEE format) |
+
+---
+
 ## Repository Structure
 
 ```
@@ -193,10 +223,23 @@ orthocache-gpu/
 │       ├── sparse_attention.py       # Block-sparse attention kernel
 │       ├── indirect_attention.py     # Indirect indexing kernel
 │       └── fwht_fused_prototype.py   # FWHT spectral eviction (TILE=64)
+├── proofs/                           # Lean 4 formal verification
+│   ├── OrthoCacheMath/
+│   │   ├── ParsevalWHT.lean          # WHT orthogonality + Parseval's identity
+│   │   ├── TruncationBound.lean      # Exponential TV bound
+│   │   └── QuantizedTruncation.lean  # IEEE 754 perfect eviction
+│   ├── lakefile.lean                 # Lean 4 build config (Mathlib dep)
+│   └── lean-toolchain                # leanprover/lean4:v4.8.0
+├── paper/
+│   └── orthocache_gpu.tex            # GPU paper (IEEE format)
+├── docs/
+│   ├── mathematical_framework.md     # Formal math reference
+│   ├── technical_report.md           # GPU architecture + benchmarks
+│   └── cost_benefit_analysis.md      # Fleet economics + consumer analysis
 ├── tests/                            # 47 tests (14 test files)
 ├── benchmarks/
 │   ├── profiling.py                  # Latency sweep benchmarks
-│   ├── profile_fusion.py            # God Kernel profiling
+│   ├── profile_fusion.py             # God Kernel profiling
 │   ├── generate_figures.py           # Publication-quality dark-theme plots
 │   └── plots/                        # Pre-generated SVG + PNG figures
 ├── COMMERCIAL_LICENSING.md           # Dual-license terms (Patent Pending)
@@ -231,8 +274,6 @@ orthocache-gpu/
                Attention Block Eviction with Split-K Parallelization},
   author    = {Arndt, Justin},
   year      = {2026},
-  publisher = {Zenodo},
-  doi       = {10.5281/zenodo.20518370},
   url       = {https://github.com/j-arndt/orthocache-gpu},
   license   = {AGPL-3.0-only}
 }

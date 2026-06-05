@@ -1,0 +1,286 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{cleveref}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+
+\begin{document}
+
+\title{OrthoCache GPU: Fused Spectral KV-Cache Eviction\\with Split-K Parallelization on NVIDIA GPUs}
+
+\author{
+\IEEEauthorblockN{Justin Arndt}
+\IEEEauthorblockA{justinarndt05@gmail.com \\
+\url{https://github.com/j-arndt/orthocache-gpu}}
+}
+
+\maketitle
+
+\begin{abstract}
+We present OrthoCache GPU, a Triton-based implementation of spectral
+KV-cache eviction for NVIDIA GPUs. OrthoCache uses the Fast Walsh--Hadamard
+Transform (FWHT) to compute per-block spectral energy ratios entirely in
+SRAM, skipping noise-dominated attention blocks before the quadratic
+attention computation begins. Our GPU-native implementation introduces
+two key contributions: (1)~a \textbf{fused God Kernel} that performs
+spectral analysis, eviction scoring, and predicated attention in a
+single Triton kernel launch with zero intermediate DRAM traffic, and
+(2)~\textbf{Split-K parallelization} with interleaved (cyclic) tile
+assignment that distributes the KV-cache workload across all streaming
+multiprocessors. On an RTX 4060 Laptop GPU (24 SMs, Ada Lovelace),
+the Split-K kernel achieves a \textbf{15.3$\times$ speedup} over
+dense attention at 32,768 tokens, with \textbf{sub-linear latency
+scaling} from 4K to 32K tokens (0.125\,ms $\to$ 0.172\,ms). The
+algorithm's correctness is formally verified in Lean~4: Parseval's
+identity for the WHT, the exponential Total Variation truncation
+bound, and a hardware-native perfect eviction theorem under IEEE~754
+float32 underflow semantics.
+\end{abstract}
+
+\begin{IEEEkeywords}
+KV-cache eviction, attention, Walsh--Hadamard Transform, GPU, Triton,
+spectral analysis, transformer inference, Split-K, formal verification
+\end{IEEEkeywords}
+
+% ===================================================================
+\section{Introduction}\label{sec:intro}
+
+Long-context large language model (LLM) inference is fundamentally
+constrained by the memory bandwidth required to load the key-value
+(KV) cache at each decoding step. At 32K tokens with 128-dimensional
+heads, a single attention head's KV-cache occupies 16\,MB---and this
+must be streamed from DRAM for every generated token.
+
+OrthoCache~\cite{orthocache_tpu} addresses this by using the Walsh--Hadamard
+Transform (WHT) to identify and skip semantically redundant KV-cache
+blocks \textit{before} the quadratic attention computation. The original
+implementation targets Google TPUs via Pallas/XLA. This paper presents
+the GPU/Triton edition, which exploits NVIDIA's programmer-controlled
+shared memory (SRAM) to achieve a fundamentally different---and
+significantly more efficient---kernel architecture.
+
+\subsection{Contributions}
+
+\begin{enumerate}
+\item \textbf{Fused God Kernel.} A single Triton kernel that performs
+FWHT spectral analysis, $\zeta$-based eviction, and predicated
+attention in one launch. Key tiles are loaded to SRAM once and reused
+across both phases, eliminating the second DRAM load.
+
+\item \textbf{Split-K Parallelization.} Distribution of KV-cache tiles
+across all SMs with interleaved (cyclic) assignment and log-sum-exp
+reduction, achieving near-perfect SM utilization.
+
+\item \textbf{Sub-Linear Scaling.} Empirical demonstration that
+OrthoCache latency stays nearly flat from 4K to 32K tokens on
+consumer GPU hardware (38\% increase vs.\ 488\% for dense attention).
+
+\item \textbf{Lean~4 Verification.} Formal proofs of Parseval's
+identity, the exponential TV truncation bound, and a novel
+hardware-native perfect eviction theorem shared with the TPU edition.
+\end{enumerate}
+
+
+% ===================================================================
+\section{Background}\label{sec:background}
+
+\subsection{KV-Cache and the Memory Wall}
+
+% TODO: Expand with quantitative memory bandwidth analysis
+
+\subsection{Walsh--Hadamard Transform}
+
+The Walsh--Hadamard matrix $H_n$ of dimension $2^n \times 2^n$ is
+defined by the Kronecker recurrence:
+\begin{equation}
+H_0 = [1], \quad H_{n+1} = H_n \otimes \begin{bmatrix} 1 & 1 \\ 1 & -1 \end{bmatrix}
+\end{equation}
+
+Parseval's identity (Lean~4 verified):
+\begin{equation}\label{eq:parseval}
+\|H_n \cdot x\|^2 = 2^n \cdot \|x\|^2
+\end{equation}
+
+
+% ===================================================================
+\section{Method}\label{sec:method}
+
+\subsection{Multi-Band Spectral Scoring}\label{sec:multiband}
+
+We decompose the WHT spectrum into four frequency bands and define
+the spectral ratio:
+\begin{equation}
+\zeta = \frac{E_{\text{high}}}{E_{\text{low}}} = \frac{\sum_{j=48}^{63} |\hat{k}_j|^2}{\sum_{j=0}^{15} |\hat{k}_j|^2}
+\end{equation}
+
+Blocks with $\zeta > \zeta_{\max}$ are classified as noise-dominated
+and evicted from the attention computation.
+
+\subsection{Truncation Bound}\label{sec:bound}
+
+\begin{theorem}[OrthoCache Truncation Bound, Lean~4 Verified]
+Given logits $z : \text{Fin}(N) \to \mathbb{R}$, a retained set $S$,
+and an evicted set $S^c$ where all evicted logits satisfy $z_i < \beta$
+and $z_{\max} = \max_{j \in S} z_j$:
+\begin{equation}
+\text{TV}(\alpha, \hat{\alpha}) \leq |S^c| \cdot \exp(\beta - z_{\max})
+\end{equation}
+\end{theorem}
+
+\subsection{Fused Kernel Architecture}\label{sec:kernel}
+
+% TODO: Detailed kernel pipeline diagram
+
+\subsection{Split-K Parallelization}\label{sec:splitk}
+
+The kernel grid is $(\text{num\_heads}, \text{num\_splits})$. SM $s$
+processes tiles $\{s, s+K, s+2K, \ldots\}$ where $K = \text{num\_splits}$.
+
+The log-sum-exp reduction merges partial states:
+\begin{align}
+m_{\text{new}} &= \max(m_1, m_2) \\
+l_{\text{new}} &= l_1 e^{m_1 - m_{\text{new}}} + l_2 e^{m_2 - m_{\text{new}}} \\
+\text{acc}_{\text{new}} &= \frac{l_1 e^{m_1 - m_{\text{new}}} \cdot \text{acc}_1 + l_2 e^{m_2 - m_{\text{new}}} \cdot \text{acc}_2}{l_{\text{new}}}
+\end{align}
+
+\subsubsection{Interleaved vs.\ Contiguous Assignment}
+
+% TODO: SM utilization comparison figure
+
+
+% ===================================================================
+\section{Lean 4 Formalization}\label{sec:lean}
+
+Three proof modules verify the algorithm's mathematical guarantees:
+
+\begin{enumerate}
+\item \texttt{ParsevalWHT.lean}: $H_n^T H_n = 2^n I$ and Parseval's identity.
+\item \texttt{TruncationBound.lean}: $\text{TV}(\alpha, \hat{\alpha}) \leq |S^c| \cdot \exp(\beta - z_{\max})$.
+\item \texttt{QuantizedTruncation.lean}: When $z_{\max} - \beta \geq 88.72$, the quantized exponential evaluates to exactly zero, yielding $\text{TV} = 0$.
+\end{enumerate}
+
+All proofs are algorithm-generic---they hold over $\mathbb{R}$ and
+general matrices, with no hardware-specific assumptions. The IEEE~754
+threshold (88.72) applies identically to NVIDIA GPU float32 and
+Google TPU float32.
+
+
+% ===================================================================
+\section{Experimental Results}\label{sec:results}
+
+\subsection{Hardware and Setup}
+
+All benchmarks run on an NVIDIA GeForce RTX 4060 Laptop GPU (Ada
+Lovelace, SM~8.9, 24 SMs, 8\,GB GDDR6) with CUDA~12.4, PyTorch~2.6,
+and Triton~3.1.
+
+\subsection{Latency Comparison}
+
+\begin{table}[h]
+\centering
+\caption{Dense vs.\ OrthoCache Split-K Attention Latency}
+\label{tab:latency}
+\begin{tabular}{@{}cccc@{}}
+\toprule
+Context & Dense & OrthoCache & Speedup \\
+\midrule
+1,024  & 0.125\,ms & 0.075\,ms & 1.67$\times$ \\
+4,096  & 0.448\,ms & 0.125\,ms & 3.59$\times$ \\
+8,192  & 0.807\,ms & 0.173\,ms & 4.66$\times$ \\
+16,384 & 1.348\,ms & 0.117\,ms & 11.5$\times$ \\
+\textbf{32,768} & \textbf{2.635\,ms} & \textbf{0.172\,ms} & \textbf{15.3$\times$} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Sub-Linear Scaling}
+
+% TODO: Figure showing latency curves (dense linear vs ortho flat)
+
+\subsection{SRAM Budget}
+
+% TODO: Table showing per-buffer allocation
+
+\subsection{DRAM Traffic Reduction}
+
+% TODO: Traffic comparison table
+
+
+% ===================================================================
+\section{Cost-Benefit Analysis}\label{sec:cost}
+
+% TODO: Summary from docs/cost_benefit_analysis.md
+
+
+% ===================================================================
+\section{Related Work}\label{sec:related}
+
+\textbf{FlashAttention}~\cite{dao2023flashattention2} tiles attention
+for IO efficiency but computes all blocks---no eviction.
+\textbf{PagedAttention}~\cite{kwon2023pagedattention} manages KV-cache
+memory via virtual paging but does not reduce compute.
+\textbf{H$_2$O}~\cite{zhang2023h2o} uses heavy-hitter scoring for
+eviction but lacks formal guarantees and requires a full attention
+pass for scoring (circular dependency).
+\textbf{StreamingLLM}~\cite{xiao2023streamingllm} uses attention sinks
+with a sliding window---a fixed heuristic, not adaptive.
+
+OrthoCache is unique in combining spectral eviction, single-kernel
+fusion, and Lean~4 formal verification.
+
+
+% ===================================================================
+\section{Conclusion}\label{sec:conclusion}
+
+OrthoCache GPU demonstrates that spectral KV-cache eviction, when
+implemented as a fused Split-K Triton kernel with interleaved tile
+assignment, achieves datacenter-grade attention performance on consumer
+GPU hardware. The 15.3$\times$ speedup at 32K tokens and sub-linear
+scaling curve represent a fundamental change in the relationship between
+context length and attention latency.
+
+\subsection{Limitations}
+
+\begin{itemize}
+\item Single-device benchmarks only (no multi-GPU NVLink validation).
+\item Kernel benchmarks, not end-to-end model inference.
+\item Consumer GPU (RTX 4060) --- datacenter GPU validation pending.
+\end{itemize}
+
+
+% ===================================================================
+\bibliographystyle{IEEEtran}
+
+\begin{thebibliography}{5}
+
+\bibitem{orthocache_tpu}
+J.~Arndt, ``OrthoCache: Hardware-Native Multi-Band Spectral Attention
+Block Eviction on TPUs,'' Zenodo, 2026.
+doi:~10.5281/zenodo.20518370.
+
+\bibitem{dao2023flashattention2}
+T.~Dao, ``FlashAttention-2: Faster Attention with Better Parallelism
+and Work Partitioning,'' \textit{arXiv:2307.08691}, 2023.
+
+\bibitem{kwon2023pagedattention}
+W.~Kwon \textit{et~al.}, ``Efficient Memory Management for Large
+Language Model Serving with PagedAttention,'' \textit{SOSP}, 2023.
+
+\bibitem{zhang2023h2o}
+Z.~Zhang \textit{et~al.}, ``H$_2$O: Heavy-Hitter Oracle for Efficient
+Generative Inference of Large Language Models,'' \textit{NeurIPS}, 2023.
+
+\bibitem{xiao2023streamingllm}
+G.~Xiao \textit{et~al.}, ``Efficient Streaming Language Models with
+Attention Sinks,'' \textit{arXiv:2309.17453}, 2023.
+
+\end{thebibliography}
+
+\end{document}

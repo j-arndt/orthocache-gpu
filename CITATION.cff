@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
-title: "OrthoCache GPU: Hardware-Native Multi-Band Spectral Attention Block Eviction"
+title: "OrthoCache GPU: Hardware-Native Multi-Band Spectral Attention Block Eviction (GPU/Triton Edition)"
 authors:
   - family-names: "Arndt"
     given-names: "Justin"
@@ -11,10 +11,6 @@ date-released: "2026-06-05"
 license: AGPL-3.0-only
 url: "https://github.com/j-arndt/orthocache-gpu"
 repository-code: "https://github.com/j-arndt/orthocache-gpu"
-identifiers:
-  - type: doi
-    value: "10.5281/zenodo.20518370"
-    description: "Zenodo archive of OrthoCache"
 keywords:
   - "KV-cache eviction"
   - "attention"
