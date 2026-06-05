@@ -1,4 +1,5 @@
 import Mathlib.Analysis.InnerProductSpace.Basic
+import Mathlib.Algebra.Order.BigOperators.Ring.Finset
 import Mathlib.Data.Matrix.Basic
 import Mathlib.LinearAlgebra.Matrix.DotProduct
 import OrthoCacheMath.ParsevalWHT
@@ -190,8 +191,16 @@ theorem spectral_cauchy_schwarz_bound {d : ℕ}
   -- Goal: |∑ i ∈ S, q_hat i * k_hat i| ≤ √(∑ i ∈ S, q_hat i ^ 2) * √(∑ i ∈ S, k_hat i ^ 2)
   -- This is Finset.inner_mul_le_norm_mul for EuclideanDomain, or we can
   -- use the sq_abs + sum_mul_sq_le_sq_mul_sq route.
-  sorry -- Cauchy-Schwarz for finite sums; Mathlib's `Finset.inner_mul_le_norm_mul_sq`
-        -- or `sq_sum_le` would close this. The structural claim is exactly CS.
+  -- Step 1: Squared Cauchy-Schwarz: (∑ fᵢgᵢ)² ≤ (∑ fᵢ²)(∑ gᵢ²)
+  have cs_sq : (∑ i ∈ S, q_hat i * k_hat i) ^ 2
+      ≤ (∑ i ∈ S, q_hat i ^ 2) * (∑ i ∈ S, k_hat i ^ 2) :=
+    Finset.sum_mul_sq_le_sq_mul_sq S q_hat k_hat
+  -- Step 2: Non-negativity of sum of squares (needed for √ · √ = √(· * ·))
+  have hq_nn : 0 ≤ ∑ i ∈ S, q_hat i ^ 2 :=
+    Finset.sum_nonneg fun i _ => sq_nonneg _
+  -- Step 3: Rewrite |x| = √(x²) and √a · √b = √(a · b), then use √-monotonicity
+  rw [← Real.sqrt_sq_eq_abs, ← Real.sqrt_mul hq_nn]
+  exact Real.sqrt_le_sqrt cs_sq
 
 /-- **Spectral Gate Criterion**: If the high-frequency spectral energy of `k`
 is small (below threshold `τ²`), then the attention logit contribution from
