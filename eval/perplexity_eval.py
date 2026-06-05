@@ -333,6 +333,10 @@ class OrthoCache_GQA_Attention:
             'evicted_tiles': 0,
             'layers_processed': 0,
             'cs_bounds': [],  # Track bounds for analysis
+            # Gold 3: Hallucination Exhaust telemetry
+            'hallucination_scores': [],   # H_score per layer
+            'q_search_intensity': [],     # max ||Q_high||₂ per layer
+            'k_info_density': [],         # max ||K_high||_F per layer
         }
 
     def reset_stats(self):
@@ -341,6 +345,9 @@ class OrthoCache_GQA_Attention:
             'evicted_tiles': 0,
             'layers_processed': 0,
             'cs_bounds': [],
+            'hallucination_scores': [],
+            'q_search_intensity': [],
+            'k_info_density': [],
         }
 
     @property
@@ -408,6 +415,10 @@ class OrthoCache_GQA_Attention:
             tiles_evicted_this_batch = 0
             tiles_total_this_batch = 0
 
+            # Gold 3: Track max norms for hallucination exhaust
+            max_q_high_batch = 0.0
+            max_k_high_batch = 0.0
+
             for kv_h in range(num_kv_heads):
                 k_h = k_b[kv_h]  # (seq_len, head_dim)
                 q_group_start = kv_h * G
@@ -430,6 +441,12 @@ class OrthoCache_GQA_Attention:
                     max_q_norm = q_norm_median.max().item()
                     cs_bound = (max_q_norm * k_high_norm) / norm_factor
 
+                    # Gold 3: Track spectral norms (zero extra compute)
+                    if k_high_norm > max_k_high_batch:
+                        max_k_high_batch = k_high_norm
+                    if max_q_norm > max_q_high_batch:
+                        max_q_high_batch = max_q_norm
+
                     if cs_bound <= tau_effective:
                         # Evict tile
                         for g in range(G):
@@ -441,6 +458,12 @@ class OrthoCache_GQA_Attention:
                 self.stats['total_tiles'] += num_tiles
 
             self.stats['evicted_tiles'] += tiles_evicted_this_batch
+
+            # Gold 3: Compute hallucination score for this layer
+            h_score = max_q_high_batch / (max_k_high_batch + 1e-10)
+            self.stats['hallucination_scores'].append(h_score)
+            self.stats['q_search_intensity'].append(max_q_high_batch)
+            self.stats['k_info_density'].append(max_k_high_batch)
 
             # Report to governor: this layer's eviction rate
             if self.governor is not None and tiles_total_this_batch > 0:
