@@ -1,3 +1,5 @@
 import OrthoCacheMath.ParsevalWHT
 import OrthoCacheMath.TruncationBound
 import OrthoCacheMath.QuantizedTruncation
+import OrthoCacheMath.CauchySchwarzGate
+import OrthoCacheMath.GQAMonotonicity
