@@ -218,13 +218,19 @@ def _pytorch_gqa_cauchy_schwarz_attention(
             # High-frequency band of K_spectral
             k_high = k_spectral[high_start:high_end]  # (32, head_dim)
 
-            # Compute ‖K_high‖_F (Frobenius norm of high-freq band)
+            # Compute ||K_high||_F (Frobenius norm of high-freq band)
             k_high_norm = torch.norm(k_high, p='fro')
+            # IEEE 754 subnormal clamp: prevent denormalized-range instability
+            # in the CS evaluation (proven safe in QuantizedTruncation.lean)
+            if k_high_norm.item() < 1e-38:
+                k_high_norm = torch.zeros(1, device=k_high_norm.device, dtype=k_high_norm.dtype).squeeze()
 
             # For each query in the group, compute the Cauchy-Schwarz bound
-            # Q_g,high alignment = ‖K_high @ Q_g‖₂ (actual high-freq logit vector)
-            # Upper bound: ‖K_high‖_F · ‖Q_g‖₂
+            # Q_g,high alignment = ||K_high @ Q_g||_2 (actual high-freq logit vector)
+            # Upper bound: ||K_high||_F * ||Q_g||_2
             q_norms = torch.norm(q_group, p=2, dim=1)  # (G,)
+            # Subnormal clamp on query norms too
+            q_norms = torch.where(q_norms < 1e-38, torch.zeros_like(q_norms), q_norms)
             cs_bounds = q_norms * k_high_norm  # (G,)
             max_cs_bound = cs_bounds.max().item()
 
@@ -369,9 +375,9 @@ if HAS_TRITON:
             k_sq = k_spectral * k_spectral
             energy_per_seq = tl.sum(k_sq, axis=1)  # (TILE_SIZE,)
             k_high_energy = tl.sum(tl.where(high_mask, energy_per_seq, 0.0))
-            # Note: we compare against tau² to avoid the sqrt in the hot path
-            # max_g(‖Q_g‖₂ · ‖K_high‖_F) ≤ τ  ⟺  max_g(‖Q_g‖² · ‖K_high‖²_F) ≤ τ²
-            # But we need per-query norms, so we compute the actual bound below.
+            # IEEE 754 subnormal clamp: prevent denormalized-range instability
+            # (bound proven safe in QuantizedTruncation.lean)
+            k_high_energy = tl.where(k_high_energy < 1e-38, 0.0, k_high_energy)
 
             # ── Vectorized Cauchy-Schwarz evaluation across G queries ──
             # For each query head g, compute ‖Q_g‖₂² and check bound
@@ -381,6 +387,8 @@ if HAS_TRITON:
                 q_g = tl.load(Q_ptr + q_g_offset + col_offsets)
                 q_g = q_g.to(tl.float32)
                 q_g_norm_sq = tl.sum(q_g * q_g)
+                # Subnormal clamp on query norm too
+                q_g_norm_sq = tl.where(q_g_norm_sq < 1e-38, 0.0, q_g_norm_sq)
                 cs_sq = q_g_norm_sq * k_high_energy
                 max_cs_sq = tl.maximum(max_cs_sq, cs_sq)
 

@@ -231,8 +231,49 @@ def calibrate_thresholds(
 
 
 # ============================================================================
-# OrthoCache Attention Monkey-Patch
+# Barrier 1: Dynamic Residual Information Governor
 # ============================================================================
+
+class ResidualGovernor:
+    """Tracks accumulated eviction pressure across layers.
+
+    As earlier layers evict more tiles, later layers automatically reduce
+    their effective threshold to prevent compounding informational erosion
+    through the residual stream.
+
+    tau_effective(l) = tau_base * max(0, 1 - alpha * eps_accum(l))
+
+    where eps_accum(l) = sum_{j < l} eviction_rate(j)
+    """
+
+    def __init__(self, alpha: float = 0.5):
+        """
+        Args:
+            alpha: Damping coefficient. Higher alpha = more conservative
+                   downstream layers. Range [0, 1].
+                   0.0 = no governor (static tau)
+                   0.5 = moderate damping (recommended)
+                   1.0 = aggressive damping (full lockdown at 100% cumulative eviction)
+        """
+        self.alpha = alpha
+        self.eps_accum = 0.0  # Running eviction pressure
+        self.layer_history = []  # Per-layer eviction rates
+
+    def reset(self):
+        """Reset at the start of each forward pass (each window)."""
+        self.eps_accum = 0.0
+        self.layer_history = []
+
+    def get_tau_effective(self, tau_base: float) -> float:
+        """Compute the effective tau for the current layer."""
+        scale = max(0.0, 1.0 - self.alpha * self.eps_accum)
+        return tau_base * scale
+
+    def report_layer(self, eviction_rate: float):
+        """Called after each layer completes. Updates cumulative pressure."""
+        self.layer_history.append(eviction_rate)
+        self.eps_accum += eviction_rate
+
 
 class OrthoCache_GQA_Attention:
     """Wraps OrthoCache V3 GQA kernel as a drop-in for LlamaAttention.
@@ -242,9 +283,11 @@ class OrthoCache_GQA_Attention:
     OrthoCache's Cauchy-Schwarz spectral gate + fused attention.
     """
 
-    def __init__(self, tau: float = 1.0, verbose: bool = False):
+    def __init__(self, tau: float = 1.0, verbose: bool = False,
+                 governor: Optional[ResidualGovernor] = None):
         self.tau = tau
         self.verbose = verbose
+        self.governor = governor
         self.stats = {
             'total_tiles': 0,
             'evicted_tiles': 0,
@@ -288,6 +331,12 @@ class OrthoCache_GQA_Attention:
             ) if hasattr(F.scaled_dot_product_attention, '__wrapped__') else \
                 self._dense_attention(query, key, value, G)
 
+        # Governor: compute tau_effective for this layer
+        if self.governor is not None:
+            tau_effective = self.governor.get_tau_effective(self.tau)
+        else:
+            tau_effective = self.tau
+
         all_batch_outputs = []
 
         for b in range(batch_size):
@@ -317,6 +366,7 @@ class OrthoCache_GQA_Attention:
             norm_factor = float(tile_size * head_dim)
 
             tiles_evicted_this_batch = 0
+            tiles_total_this_batch = 0
 
             for kv_h in range(num_kv_heads):
                 k_h = k_b[kv_h]  # (seq_len, head_dim)
@@ -340,16 +390,22 @@ class OrthoCache_GQA_Attention:
                     max_q_norm = q_norm_median.max().item()
                     cs_bound = (max_q_norm * k_high_norm) / norm_factor
 
-                    if cs_bound <= self.tau:
+                    if cs_bound <= tau_effective:
                         # Evict tile
                         for g in range(G):
                             qh = q_group_start + g
                             logits[qh, :, start:end] = float('-inf')
                         tiles_evicted_this_batch += 1
 
+                tiles_total_this_batch += num_tiles
                 self.stats['total_tiles'] += num_tiles
 
             self.stats['evicted_tiles'] += tiles_evicted_this_batch
+
+            # Report to governor: this layer's eviction rate
+            if self.governor is not None and tiles_total_this_batch > 0:
+                layer_eviction_rate = tiles_evicted_this_batch / tiles_total_this_batch
+                self.governor.report_layer(layer_eviction_rate)
 
             # Softmax + output
             attn_weights = F.softmax(logits, dim=-1)
@@ -501,8 +557,14 @@ def run_perplexity_sweep(
     max_length: int = 512,
     stride: int = 256,
     min_layer: int = 0,
+    alpha: float = 0.0,
 ) -> Dict[str, List]:
-    """Sweep tau values and record perplexity + eviction rate."""
+    """Sweep tau values and record perplexity + eviction rate.
+
+    Args:
+        alpha: Governor damping coefficient. 0.0 = no governor (static tau),
+               0.5 = moderate damping, 1.0 = aggressive damping.
+    """
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     print(f"Loading model from {model_path}...")
@@ -518,6 +580,11 @@ def run_perplexity_sweep(
     print(f"  GQA config: {model.config.num_attention_heads} Q-heads, "
           f"{model.config.num_key_value_heads} KV-heads, "
           f"G={model.config.num_attention_heads // model.config.num_key_value_heads}")
+
+    if alpha > 0:
+        print(f"  Governor: ACTIVE (alpha={alpha})")
+    else:
+        print(f"  Governor: DISABLED (static tau)")
 
     windows = load_wikitext2(tokenizer, max_length=max_length, stride=stride)
 
@@ -546,8 +613,25 @@ def run_perplexity_sweep(
         print(f"OrthoCache: tau = {tau}")
         print("=" * 60)
 
-        orthocache = OrthoCache_GQA_Attention(tau=tau, verbose=False)
+        # Create governor (or None if alpha=0)
+        governor = ResidualGovernor(alpha=alpha) if alpha > 0 else None
+
+        orthocache = OrthoCache_GQA_Attention(
+            tau=tau, verbose=False, governor=governor,
+        )
         patched_model = patch_model_attention(model, orthocache, min_layer=min_layer)
+
+        # Add a pre-forward hook on the FIRST patched layer to reset
+        # the governor at the start of each forward pass
+        if governor is not None:
+            first_patched_layer = model.model.layers[min_layer]
+            def make_reset_hook(gov):
+                def hook(module, args):
+                    gov.reset()
+                return hook
+            reset_handle = first_patched_layer.register_forward_pre_hook(
+                make_reset_hook(governor)
+            )
 
         ppl = evaluate_perplexity(
             patched_model, tokenizer, windows, device,
@@ -555,6 +639,15 @@ def run_perplexity_sweep(
         )
 
         eviction_rate = orthocache.eviction_rate
+
+        # Print governor layer history for the last forward pass
+        if governor is not None:
+            hist = governor.layer_history
+            if hist:
+                print(f"  Governor history (last pass): "
+                      f"[{', '.join(f'{r:.1%}' for r in hist)}]")
+                print(f"  Final eps_accum: {governor.eps_accum:.3f}")
+            reset_handle.remove()
 
         print(f"  tau={tau}: PPL={ppl:.2f}, Eviction Rate={eviction_rate:.1%}")
 
@@ -649,6 +742,11 @@ def main():
         help="First layer to apply eviction (default: num_layers//2). "
              "Set to 0 to evict in all layers.",
     )
+    parser.add_argument(
+        "--alpha", type=float, default=0.0,
+        help="Residual Information Governor damping coefficient. "
+             "0.0 = disabled (static tau), 0.5 = moderate, 1.0 = aggressive.",
+    )
     args = parser.parse_args()
 
     # Device selection
@@ -719,6 +817,7 @@ def main():
         max_length=args.max_length,
         stride=args.stride,
         min_layer=min_layer,
+        alpha=args.alpha,
     )
 
     print_pareto_table(results)
