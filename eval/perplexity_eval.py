@@ -410,6 +410,17 @@ class OrthoCache_GQA_Attention:
             # Softmax + output
             attn_weights = F.softmax(logits, dim=-1)
             attn_weights = torch.nan_to_num(attn_weights, nan=0.0)
+
+            # Barrier 2: Compute attention entropy for EntropyGovernor
+            # H = -sum(p * log(p)), averaged across heads and query positions
+            if self.governor is not None and hasattr(self.governor, 'set_entropy'):
+                # Clamp to avoid log(0)
+                p_clamped = attn_weights.clamp(min=1e-10)
+                entropy_per_head = -(p_clamped * p_clamped.log()).sum(dim=-1)  # (num_q_heads, seq_len)
+                mean_entropy = entropy_per_head.mean().item()
+                self.governor.set_entropy(mean_entropy)
+                self.stats['entropy'] = mean_entropy
+
             output_b = torch.matmul(attn_weights, v_expanded)
             all_batch_outputs.append(output_b.to(query.dtype))
 
@@ -558,6 +569,9 @@ def run_perplexity_sweep(
     stride: int = 256,
     min_layer: int = 0,
     alpha: float = 0.0,
+    entropy_mode: bool = False,
+    beta: float = 1.0,
+    h_median: float = 3.0,
 ) -> Dict[str, List]:
     """Sweep tau values and record perplexity + eviction rate.
 
@@ -581,7 +595,9 @@ def run_perplexity_sweep(
           f"{model.config.num_key_value_heads} KV-heads, "
           f"G={model.config.num_attention_heads // model.config.num_key_value_heads}")
 
-    if alpha > 0:
+    if alpha > 0 and entropy_mode:
+        print(f"  Governor: ENTROPY (alpha={alpha}, beta={beta}, h_median={h_median:.2f})")
+    elif alpha > 0:
         print(f"  Governor: ACTIVE (alpha={alpha})")
     else:
         print(f"  Governor: DISABLED (static tau)")
@@ -614,7 +630,17 @@ def run_perplexity_sweep(
         print("=" * 60)
 
         # Create governor (or None if alpha=0)
-        governor = ResidualGovernor(alpha=alpha) if alpha > 0 else None
+        if alpha > 0 and entropy_mode:
+            governor = EntropyGovernor(
+                alpha=alpha, beta=beta, h_median=h_median
+            )
+            gov_label = f"EntropyGovernor(alpha={alpha}, beta={beta}, h_median={h_median:.2f})"
+        elif alpha > 0:
+            governor = ResidualGovernor(alpha=alpha)
+            gov_label = f"ResidualGovernor(alpha={alpha})"
+        else:
+            governor = None
+            gov_label = "None"
 
         orthocache = OrthoCache_GQA_Attention(
             tau=tau, verbose=False, governor=governor,
@@ -647,6 +673,10 @@ def run_perplexity_sweep(
                 print(f"  Governor history (last pass): "
                       f"[{', '.join(f'{r:.1%}' for r in hist)}]")
                 print(f"  Final eps_accum: {governor.eps_accum:.3f}")
+                # Barrier 2: Print entropy info if available
+                if hasattr(governor, 'current_entropy') and governor.current_entropy is not None:
+                    print(f"  Attention entropy: {governor.current_entropy:.4f} "
+                          f"(h_median={governor.h_median:.2f})")
             reset_handle.remove()
 
         print(f"  tau={tau}: PPL={ppl:.2f}, Eviction Rate={eviction_rate:.1%}")
@@ -722,6 +752,10 @@ def main():
         help="Single tau value for quick eval",
     )
     parser.add_argument(
+        "--tau-list", type=float, nargs='+', default=None,
+        help="List of tau values for fine-grained sweep (e.g., --tau-list 1.0 1.02 1.04)",
+    )
+    parser.add_argument(
         "--max-length", type=int, default=256,
         help="Max sequence length for evaluation windows",
     )
@@ -746,6 +780,21 @@ def main():
         "--alpha", type=float, default=0.0,
         help="Residual Information Governor damping coefficient. "
              "0.0 = disabled (static tau), 0.5 = moderate, 1.0 = aggressive.",
+    )
+    parser.add_argument(
+        "--entropy", action='store_true', default=False,
+        help="Enable Barrier 2: Temporal Entropy Scaling. "
+             "Modulates tau based on attention entropy (requires --alpha > 0).",
+    )
+    parser.add_argument(
+        "--beta", type=float, default=1.0,
+        help="Entropy governor sensitivity (with --entropy). "
+             "Higher = sharper transition around h_median.",
+    )
+    parser.add_argument(
+        "--h-median", type=float, default=None,
+        help="Median entropy estimate (with --entropy). "
+             "If None, auto-calibrated from baseline.",
     )
     args = parser.parse_args()
 
@@ -792,10 +841,12 @@ def main():
     elif args.sweep:
         # Default sweep without calibration
         tau_values = [0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 25.0, 50.0, 100.0, 500.0]
+    elif args.tau_list is not None:
+        tau_values = sorted(args.tau_list)
     elif args.tau is not None:
         tau_values = [args.tau]
     else:
-        print("Specify --calibrate, --sweep, or --tau <value>")
+        print("Specify --calibrate, --sweep, --tau <value>, or --tau-list <values>")
         return
 
     # Determine min_layer
@@ -809,6 +860,15 @@ def main():
         min_layer = config.num_hidden_layers // 2
         print(f"Auto min_layer: {min_layer} (protecting layers 0-{min_layer-1})")
 
+    # Entropy governor setup
+    entropy_mode = args.entropy
+    beta = args.beta
+    h_median = args.h_median if args.h_median is not None else 3.0  # default, auto-calibrated inside
+
+    if entropy_mode and args.alpha <= 0:
+        print("WARNING: --entropy requires --alpha > 0. Falling back to static tau.")
+        entropy_mode = False
+
     # Run evaluation
     results = run_perplexity_sweep(
         model_path=args.model_path,
@@ -818,6 +878,9 @@ def main():
         stride=args.stride,
         min_layer=min_layer,
         alpha=args.alpha,
+        entropy_mode=entropy_mode,
+        beta=beta,
+        h_median=h_median,
     )
 
     print_pareto_table(results)
