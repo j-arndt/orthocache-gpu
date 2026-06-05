@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="benchmarks/plots/fusion_crossover.png" alt="OrthoCache Split-K God Kernel: 15× speedup at 32K tokens" width="720" />
+  <img src="benchmarks/plots/hero_multihead.png" alt="OrthoCache: Fused Spectral Eviction + Attention — crossover at 4K tokens" width="720" />
 </p>
 
 <h1 align="center">OrthoCache GPU</h1>
@@ -21,19 +21,18 @@
 
 OrthoCache is a **KV-cache eviction algorithm** that uses spectral analysis (Walsh–Hadamard Transform) to identify and skip semantically redundant attention blocks — entirely in SRAM, with zero CPU round-trips. Instead of scoring blocks with attention itself (circular), OrthoCache analyzes the **frequency-domain energy distribution** of each key block: blocks dominated by high-frequency noise get evicted before attention is ever computed.
 
-The result: **sub-linear attention scaling** — the model processes 32K tokens nearly as fast as 4K tokens, because the eviction rate naturally increases with context length.
+### Key Results (RTX 4060 Laptop GPU, 32 heads, 50% eviction)
 
-### Key Results (RTX 4060 Laptop GPU, 24 SMs)
+| Context Length | Dense Attention | Split-K OrthoCache | Speedup | KV Memory Saved |
+|:---:|:---:|:---:|:---:|:---:|
+| 1,024 tokens | 0.106 ms | 0.207 ms | 0.51× | 50% |
+| 2,048 tokens | 0.332 ms | 0.367 ms | 0.91× | 50% |
+| **4,096 tokens** | **0.668 ms** | **0.614 ms** | **1.09×** | **50%** |
+| 8,192 tokens | 1.279 ms | 1.020 ms | **1.25×** | 50% |
+| 16,384 tokens | 2.536 ms | 2.042 ms | **1.24×** | 50% |
+| **32,768 tokens** | **4.862 ms** | **3.789 ms** | **1.28×** | **50%** |
 
-| Context Length | Dense Attention | OrthoCache Split-K | Speedup |
-|:---:|:---:|:---:|:---:|
-| 1,024 tokens | 0.125 ms | 0.075 ms | **1.67×** |
-| 4,096 tokens | 0.448 ms | 0.125 ms | **3.59×** |
-| 8,192 tokens | 0.807 ms | 0.173 ms | **4.66×** |
-| 16,384 tokens | 1.348 ms | 0.117 ms | **11.5×** |
-| **32,768 tokens** | **2.635 ms** | **0.172 ms** | **15.3×** |
-
-> OrthoCache latency stays **nearly flat** from 4K → 32K tokens (0.125ms → 0.172ms), while dense attention scales linearly. This is because more blocks get evicted at longer contexts, and Split-K parallelization saturates all 24 SMs.
+> **Crossover at ~4K tokens.** Below 4K the spectral analysis overhead exceeds the eviction savings. Above 4K, OrthoCache is both faster and uses half the KV-cache memory — meaning you can serve **2× more concurrent users** on the same GPU. Mathematical guarantees are [formally verified in Lean 4](#lean-4-formal-verification).
 
 ---
 
@@ -239,8 +238,10 @@ orthocache-gpu/
 ├── tests/                            # 47 tests (14 test files)
 ├── benchmarks/
 │   ├── profiling.py                  # Latency sweep benchmarks
-│   ├── profile_fusion.py             # God Kernel profiling
+│   ├── profile_fusion.py             # Fused kernel profiling (single-head)
+│   ├── profile_multihead.py          # Multi-head benchmark (hero figure data)
 │   ├── generate_figures.py           # Publication-quality dark-theme plots
+│   ├── generate_hero_figure.py       # Hero figure generator (multihead data)
 │   └── plots/                        # Pre-generated SVG + PNG figures
 ├── COMMERCIAL_LICENSING.md           # Dual-license terms (Patent Pending)
 ├── CITATION.cff                      # Machine-readable citation metadata
@@ -253,10 +254,10 @@ orthocache-gpu/
 ## Benchmark Figures
 
 <p align="center">
-  <img src="benchmarks/plots/fusion_speedup_heatmap.png" alt="Speedup heatmap across eviction rates and sequence lengths" width="600" />
+  <img src="benchmarks/plots/hero_speedup_bars.png" alt="Split-K OrthoCache speedup vs dense attention" width="600" />
 </p>
 
-<p align="center"><em>Speedup vs dense attention across eviction rates (ζ) and sequence lengths. Higher eviction rates and longer contexts yield the largest gains.</em></p>
+<p align="center"><em>Speedup vs dense attention at 50% eviction rate. OrthoCache breaks even at ~4K tokens and provides 1.28× speedup at 32K — while saving 50% KV-cache memory.</em></p>
 
 <p align="center">
   <img src="benchmarks/plots/fusion_sram_utilization.png" alt="SRAM budget breakdown" width="600" />

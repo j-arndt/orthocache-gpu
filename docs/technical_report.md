@@ -8,7 +8,7 @@
 
 This report documents the GPU/Triton implementation of OrthoCache, a spectral KV-cache eviction algorithm that uses the Walsh–Hadamard Transform (WHT) to identify and skip semantically redundant attention blocks entirely in SRAM. The GPU edition introduces two key architectural contributions beyond the original TPU implementation: (1) a **fused God Kernel** that performs spectral analysis, eviction scoring, and predicated attention in a single Triton kernel launch, and (2) **Split-K parallelization** with interleaved tile assignment that distributes the KV-cache workload across all available SMs.
 
-On an RTX 4060 Laptop GPU (24 SMs, 100 KB SRAM/SM), the Split-K kernel achieves a **15.3× speedup** over dense attention at 32,768 tokens, with **sub-linear latency scaling** from 4,096 to 32,768 tokens (0.125 ms → 0.172 ms).
+On an RTX 4060 Laptop GPU (24 SMs, 100 KB SRAM/SM), the Split-K kernel achieves a **1.28× speedup** over dense attention at 32,768 tokens with **50% KV-cache memory savings** (32 heads, 50% eviction). The crossover point where OrthoCache surpasses dense attention is ~4K tokens.
 
 ---
 
@@ -161,26 +161,24 @@ Under **interleaved assignment** (SM 0 gets tiles 0, 24, 48, ...; SM 1 gets tile
 
 ### 5.1 Latency Comparison (✓ Measured)
 
+Multi-head benchmark (32 heads, 50% eviction, RTX 4060 Laptop GPU). All values measured (✓).
+
 | Context Length | Dense (✓) | OrthoCache Split-K (✓) | Speedup |
 |:---:|:---:|:---:|:---:|
-| 1,024 tokens | 0.125 ms | 0.075 ms | **1.67×** |
-| 4,096 tokens | 0.448 ms | 0.125 ms | **3.59×** |
-| 8,192 tokens | 0.807 ms | 0.173 ms | **4.66×** |
-| 16,384 tokens | 1.348 ms | 0.117 ms | **11.5×** |
-| **32,768 tokens** | **2.635 ms** | **0.172 ms** | **15.3×** |
+| 1,024 tokens | 0.106 ms | 0.207 ms | **0.51×** |
+| 2,048 tokens | 0.332 ms | 0.367 ms | **0.91×** |
+| 4,096 tokens | 0.668 ms | 0.614 ms | **1.09×** |
+| 8,192 tokens | 1.279 ms | 1.020 ms | **1.25×** |
+| 16,384 tokens | 2.536 ms | 2.042 ms | **1.24×** |
+| **32,768 tokens** | **4.862 ms** | **3.789 ms** | **1.28×** |
 
-### 5.2 Sub-Linear Scaling Analysis
+### 5.2 Scaling Analysis
 
-The most striking result is the **nearly flat OrthoCache latency** from 4K to 32K tokens:
+Both dense and OrthoCache latency scale roughly linearly with sequence length. The crossover where OrthoCache becomes faster than dense attention occurs at ~4K tokens. Below that threshold, the spectral analysis overhead exceeds the savings from eviction.
 
-| Transition | Dense Δ | OrthoCache Δ |
-|:---|:---|:---|
-| 4K → 8K | +80% (+0.359 ms) | +38% (+0.048 ms) |
-| 8K → 16K | +67% (+0.541 ms) | −32% (−0.056 ms) |
-| 16K → 32K | +95% (+1.287 ms) | +47% (+0.055 ms) |
-| **4K → 32K total** | **+488%** | **+38%** |
+The peak measured speedup is 1.28× at 32K tokens. The primary value proposition is the combination of this modest latency improvement with **50% KV-cache memory savings** — half the KV-cache entries are skipped, reducing memory pressure and enabling longer contexts within the same VRAM budget.
 
-Dense attention scales linearly (O(N)). OrthoCache scales sub-linearly because the eviction rate $S(N)$ increases with sequence length — longer contexts have more redundant blocks. The effective compute is $O((1-S(N)) \cdot N)$ where $S(N)$ is monotonically increasing, resulting in a concave latency curve.
+> **Note on earlier claims.** An earlier version of this report claimed a 15.3× speedup with sub-linear (nearly flat) scaling. That number was measured against a broken V1 sequential kernel, not against proper dense attention. The corrected data above uses the correct baseline.
 
 ### 5.3 Reconstruction Error (✓ Measured)
 

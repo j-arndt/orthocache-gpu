@@ -126,19 +126,20 @@ The production-relevant benchmark is the **multi-head compacted pipeline** (`gpu
 | 16,384 | 2.470 ms | 2.066 ms | 1.276 ms | **1.94×** | +48.3% |
 | 32,768 | 4.574 ms | 3.839 ms | 2.434 ms | **1.88×** | +46.8% |
 
-**Table 3.** README headline results — Split-K fused attention path at natural eviction rates. These represent the system-level numbers including all overheads. All values measured (✓).
+**Table 3.** Multi-head benchmark — Split-K fused attention (32 heads, 50% eviction, RTX 4060 Laptop GPU). These represent the system-level numbers including all overheads. All values measured (✓).
 
 | Context Length | Dense Attention (✓) | OrthoCache Split-K (✓) | Speedup (✓) |
 |:---:|:---:|:---:|:---:|
-| 1,024 tokens | 0.125 ms | 0.075 ms | **1.67×** |
-| 4,096 tokens | 0.448 ms | 0.125 ms | **3.59×** |
-| 8,192 tokens | 0.807 ms | 0.173 ms | **4.66×** |
-| 16,384 tokens | 1.348 ms | 0.117 ms | **11.5×** |
-| **32,768 tokens** | **2.635 ms** | **0.172 ms** | **15.3×** |
+| 1,024 tokens | 0.106 ms | 0.207 ms | **0.51×** |
+| 2,048 tokens | 0.332 ms | 0.367 ms | **0.91×** |
+| 4,096 tokens | 0.668 ms | 0.614 ms | **1.09×** |
+| 8,192 tokens | 1.279 ms | 1.020 ms | **1.25×** |
+| 16,384 tokens | 2.536 ms | 2.042 ms | **1.24×** |
+| **32,768 tokens** | **4.862 ms** | **3.789 ms** | **1.28×** |
 
-**Key result: $\Delta\tau = 93.5\%$ at 32K tokens (15.3× speedup) ✓**
+**Key result: Above 4K tokens, OrthoCache provides both a latency speedup (up to 1.28×) and 50% KV-cache memory savings. ✓** The crossover point where Split-K surpasses dense attention is ~4K tokens. Below that, the spectral analysis overhead exceeds the savings from eviction.
 
-> **Platform transfer note.** These measurements are on an RTX 4060 Laptop GPU — a consumer-class device. Datacenter H100s have 5× the memory bandwidth (3.35 TB/s HBM3 vs. 272 GB/s GDDR6) and 5× the SM count (132 vs. 24). Since OrthoCache is **memory-bandwidth bound** (not compute bound), the absolute latencies would be lower on H100, but the **speedup ratios should be similar or better** — the algorithm's benefit comes from DRAM traffic elimination, which scales with the ratio of evicted blocks regardless of peak bandwidth. The interleaved Split-K assignment becomes even more effective with 132 SMs. ⊘
+> **Note on earlier claims.** An earlier version of this document reported a 15.3× speedup, which was measured against a broken V1 sequential kernel rather than against proper dense attention. The corrected comparison above uses the same dense attention baseline for both columns. The real value proposition is the combination of modest latency improvement and 50% KV-cache memory savings at long contexts. ⊘
 
 ### 3.3 Accuracy Measurements
 
@@ -366,8 +367,8 @@ The separation between **what we have measured** and **what we project** is the 
 - Dense vs. OrthoCache latency across 1K–32K tokens on RTX 4060 Laptop GPU (Tables 1–3)
 - DRAM traffic volumes at all eviction rates and sequence lengths
 - Reconstruction error across 4K–131K tokens and 25%–87.5% eviction (Table 4)
-- Speedup ratios: 1.53×–15.3× depending on eviction rate and sequence length
-- Sub-linear scaling behavior: OrthoCache latency nearly flat from 4K→32K tokens
+- Speedup ratios: 1.09×–1.28× at 50% eviction (4K–32K tokens)
+- Crossover at ~4K tokens; both dense and OrthoCache scale roughly linearly, with OrthoCache providing modest latency gains plus 50% KV-cache memory savings
 
 **Projected (⊘):**
 - Fleet-scale economics (Table 5): dependent on $N_{\text{GPUs}}$, $\phi_{\text{inf}}$, and datacenter power constants

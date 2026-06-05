@@ -359,22 +359,26 @@ The fused kernel saves an additional $N \cdot d_k \cdot b_{\text{dtype}}$ bytes 
 
 ---
 
-## §7  Sub-Linear Scaling Argument
+## §7  Scaling Behavior
 
 ### 7.1  Empirical Observation
 
-Measured latency (✓) on RTX 4060 scales **sub-linearly** from 4K to 32K tokens:
+Measured latency (✓) on RTX 4060 (32 heads, 50% eviction) from 1K to 32K tokens:
 
 | Tokens | Dense latency | OrthoCache latency | Speedup |
 |:-------|:-------------|:-------------------|:--------|
-| 4K | 0.58 ms ✓ | 0.31 ms ✓ | 1.9× ✓ |
-| 8K | 1.12 ms ✓ | 0.42 ms ✓ | 2.7× ✓ |
-| 16K | 2.21 ms ✓ | 0.55 ms ✓ | 4.0× ✓ |
-| 32K | 4.40 ms ✓ | 0.29 ms ✓ | 15.3× ✓ |
+| 1K | 0.106 ms ✓ | 0.207 ms ✓ | 0.51× ✓ |
+| 2K | 0.332 ms ✓ | 0.367 ms ✓ | 0.91× ✓ |
+| 4K | 0.668 ms ✓ | 0.614 ms ✓ | 1.09× ✓ |
+| 8K | 1.279 ms ✓ | 1.020 ms ✓ | 1.25× ✓ |
+| 16K | 2.536 ms ✓ | 2.042 ms ✓ | 1.24× ✓ |
+| 32K | 4.862 ms ✓ | 3.789 ms ✓ | 1.28× ✓ |
 
-The OrthoCache latency stays **nearly flat** from 4K to 32K, while dense attention scales linearly. The speedup increases super-linearly.
+Both dense and OrthoCache latency scale roughly linearly with sequence length. The crossover point where OrthoCache becomes faster than dense attention is ~4K tokens. Below that, the spectral analysis overhead exceeds the savings from eviction. Peak speedup is 1.28× at 32K. The primary value is the combination of this modest latency improvement with **50% KV-cache memory savings**.
 
-### 7.2  Mechanism: Increasing Eviction Rate
+> **Correction note.** An earlier version of this table reported a 15.3× speedup at 32K. That number was measured against a broken V1 sequential kernel (which serialized all tiles on a single SM), not against proper dense attention. The table above uses the correct dense attention baseline.
+
+### 7.2  Mechanism: Eviction-Driven Compute Reduction
 
 As context length $N$ grows, the number of tiles $m = N/B$ increases. In typical LLM inference, the incremental tiles are predominantly mid-sequence context with high $\zeta$ (system prompt bias: the first $\sim 2\text{K}$ tokens are high-quality, retained tokens; additional context is progressively noisier). Therefore, the eviction rate $\mathcal{S}(N)$ is a **monotonically increasing** function of $N$:
 
@@ -394,15 +398,11 @@ For dense attention: $T_{\text{dense}}(N) = c_B \cdot N / B$. The speedup ratio 
 
 $$\frac{T_{\text{dense}}}{T_{\text{OrthoCache}}} \approx \frac{1}{1 - \mathcal{S}(N)}$$
 
-Since $\mathcal{S}(N) \to 1$ as $N \to \infty$ (more tiles $\Rightarrow$ more noise $\Rightarrow$ more eviction), the speedup grows without bound in the limit. In practice, $\mathcal{S}$ is bounded by the fraction of truly important tokens, but the sub-linear scaling is clear over the tested range.
+At 50% eviction ($\mathcal{S} = 0.5$), this predicts a theoretical 2× speedup. The measured 1.28× is lower because Phase A (spectral analysis) is not free — it adds overhead that partially offsets the compute saved by eviction. The gap between theoretical and measured speedup reflects the cost of the FWHT + $\zeta$ computation.
 
-### 7.4  Asymptotic Characterization
+### 7.4  Practical Value
 
-If we model the eviction rate as $\mathcal{S}(N) = 1 - \gamma / N^{\alpha}$ for constants $\gamma > 0$ and $\alpha \in (0, 1)$, then the effective compute is:
-
-$$T_{\text{OrthoCache}}(N) = O\!\left(\frac{\gamma}{N^{\alpha}} \cdot N\right) = O(N^{1-\alpha})$$
-
-This is **sub-linear** for any $\alpha > 0$. The empirically observed scaling from 4K → 32K (an 8× increase in $N$ but only a $\sim 1\times$ increase in latency) is consistent with $\alpha \approx 0.8$–$0.9$ (⊘ rough fit), though a precise characterization requires profiling across a wider range of sequence lengths and prompt distributions.
+The primary benefit of OrthoCache at current measured performance is **memory savings**, not raw speed. At 50% eviction, half the KV-cache entries are skipped, reducing memory pressure and enabling longer context windows within the same VRAM budget. The modest latency improvement (up to 1.28×) is a secondary benefit that may improve on datacenter GPUs with higher SM counts (H100: 132 SMs vs. RTX 4060: 24 SMs). ⊘
 
 ---
 

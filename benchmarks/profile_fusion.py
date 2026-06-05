@@ -288,7 +288,7 @@ def splitk_god_kernel_attention(
     """Split-K God Kernel V2: multi-head fused FWHT+ζ+attention.
 
     Grid-parallel Split-K tiling with interleaved (cyclic) tile assignment
-    across all SMs. This is the kernel that achieves 15.3× at 32K.
+    across all SMs. This is the kernel that achieves 1.28× speedup at 32K with 50% KV-cache memory savings.
     """
     # Reshape single-head inputs to multi-head format for V2 API
     head_dim = q.shape[-1]
