@@ -121,7 +121,7 @@ def load_fusion_data() -> list[dict]:
 # ─── Figure 1: Crossover Point Plot ──────────────────────────────────────────
 
 def generate_fig1_crossover():
-    """Line plot: Dense vs Unfused vs Fused at 50% eviction rate.
+    """Line plot: Dense vs Unfused vs Fused V1 vs Split-K V2 at 50% eviction.
 
     Log-log scale (x: base 2, y: standard log).
     Shaded std-dev error bands, annotated speedup at largest sequence length.
@@ -141,9 +141,13 @@ def generate_fig1_crossover():
             "color": COLORS['unfused'], "marker": "s", "ls": "-",
             "filter": lambda d: d["mode"] == "unfused" and abs(d["eviction_rate"] - 0.50) < 0.01,
         },
-        "Fused OrthoCache": {
-            "color": COLORS['fused'], "marker": "D", "ls": "-",
+        "Fused V1 (sequential)": {
+            "color": '#888888', "marker": "D", "ls": "--",
             "filter": lambda d: d["mode"] == "fused" and abs(d["eviction_rate"] - 0.50) < 0.01,
+        },
+        "Split-K V2 (God Kernel)": {
+            "color": COLORS['fused'], "marker": "^", "ls": "-",
+            "filter": lambda d: d["mode"] == "splitk" and abs(d["eviction_rate"] - 0.50) < 0.01,
         },
     }
 
@@ -182,24 +186,25 @@ def generate_fig1_crossover():
     ax.set_yscale('log')
     ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: f'{int(x):,}'))
 
-    # Annotate speedup ratio (fused/dense) at the largest sequence length
-    if max_sl and "Dense" in plotted_data and "Fused OrthoCache" in plotted_data:
+    # Annotate speedup ratio — prefer Split-K V2 over Dense
+    hero_label = "Split-K V2 (God Kernel)"
+    if max_sl and "Dense" in plotted_data and hero_label in plotted_data:
         dense_ms = plotted_data["Dense"].get(max_sl)
-        fused_ms = plotted_data["Fused OrthoCache"].get(max_sl)
-        if dense_ms and fused_ms:
-            speedup = dense_ms / fused_ms
+        hero_ms = plotted_data[hero_label].get(max_sl)
+        if dense_ms and hero_ms and hero_ms > 0:
+            speedup = dense_ms / hero_ms
             ax.annotate(
                 f'{speedup:.1f}× speedup',
-                xy=(max_sl, fused_ms), xytext=(max_sl * 1.3, fused_ms * 0.6),
-                fontsize=12, fontweight='bold',
+                xy=(max_sl, hero_ms), xytext=(max_sl * 1.15, hero_ms * 0.35),
+                fontsize=14, fontweight='bold',
                 color=COLORS['fused'],
                 arrowprops=dict(arrowstyle='->', color=COLORS['fused'],
-                                lw=1.5, alpha=0.7),
+                                lw=2, alpha=0.8),
             )
 
     ax.set_xlabel('Context Length (tokens)')
     ax.set_ylabel('Latency (ms)')
-    ax.set_title('OrthoCache God Kernel: Crossover Point Analysis',
+    ax.set_title('OrthoCache God Kernel: Dense vs Split-K V2',
                  fontsize=16, fontweight='bold', pad=15)
 
     ax.legend(loc='upper left', framealpha=0.7, facecolor='#1a1a2e',
