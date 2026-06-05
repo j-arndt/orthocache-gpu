@@ -89,38 +89,39 @@ def orthocache_forward(
         metadata['eviction_rate'] = 0.0
         return output, metadata
 
-    # --- Triton fused: God Kernel (Phase 7) ---
+    # --- Triton fused: Split-K God Kernel (Phase 7b) ---
     if mode == 'triton_fused':
         from orthocache_gpu.triton_kernels.fused_eviction import (
-            fused_orthocache_attention as _fused_attn,
+            fused_orthocache_attention_v2 as _fused_attn_v2,
         )
         t0 = time.perf_counter()
 
-        # The God Kernel operates on single-head data with TILE_SIZE=64.
-        # Process each head independently and stack the results.
-        outputs = []
-        total_retained = 0
-        for h in range(num_heads):
-            q_h = q[:, h, :]         # (seq_len_q, head_dim)
-            k_h = keys[:, h, :]      # (seq_len_k, head_dim)
-            v_h = values[:, h, :]    # (seq_len_k, head_dim)
-            out_h, meta_h = _fused_attn(q_h, k_h, v_h, zeta_max=zeta_max)
-            outputs.append(out_h)
-            total_retained += meta_h.get('tiles_retained', 0)
+        # Transpose (seq, heads, dim) → (heads, seq, dim) for the kernel.
+        # Single launch: grid=(num_heads, num_splits) — no Python loop.
+        q_fused = q.squeeze(0) if seq_len_q == 1 else q[0]  # (num_heads, head_dim)
+        # Handle multi-token query by taking first token (decode mode)
+        if q_fused.ndim == 1:
+            q_fused = q_fused.unsqueeze(0)  # (1, head_dim) → need (heads, dim)
+        # q: (seq_q, heads, dim) → take first query token → (heads, dim)
+        q_heads = q[0]  # (num_heads, head_dim)
+        k_heads = keys.permute(1, 0, 2).contiguous()   # (heads, seq, dim)
+        v_heads = values.permute(1, 0, 2).contiguous()  # (heads, seq, dim)
 
-        # Stack: list of (seq_len_q, head_dim) → (seq_len_q, num_heads, head_dim)
-        output = torch.stack(outputs, dim=1)
+        output_heads, fused_meta = _fused_attn_v2(
+            q_heads, k_heads, v_heads, zeta_max=zeta_max
+        )
+        # output_heads: (num_heads, head_dim) → (1, num_heads, head_dim)
+        output = output_heads.unsqueeze(0)
 
-        avg_retained = total_retained / max(1, num_heads)
         tile_size = 64  # God Kernel tile size
         num_tiles_fused = seq_len_k // tile_size
-        eviction_rate = 1.0 - (avg_retained / max(1, num_tiles_fused))
 
         metadata['latency_ms'] = (time.perf_counter() - t0) * 1000
-        metadata['eviction_rate'] = eviction_rate
-        metadata['tiles_retained_avg'] = avg_retained
+        metadata['eviction_rate'] = fused_meta.get('eviction_rate', 0.0)
         metadata['tile_size_fused'] = tile_size
         metadata['num_tiles_fused'] = num_tiles_fused
+        metadata['num_splits'] = fused_meta.get('num_splits', 1)
+        metadata['tile_assignment'] = 'interleaved'
         return output, metadata
 
 

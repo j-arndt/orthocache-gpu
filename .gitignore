@@ -1,9 +1,52 @@
+# Python
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 *.egg-info/
 dist/
 build/
 .eggs/
 *.so
+*.whl
+
+# Testing
 .pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Triton compilation cache
+.triton/
+
+# Environment
+.env
+.venv/
+env/
+venv/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Build artifacts
+kaggle_upload.zip
+
+# External model weights (do NOT commit)
+NemoTron/
+
+# Planning docs (local only, not for public repo)
+implementation_plan.md
+task.md
+walkthrough.md
+walkthrough2.md
+novelty_monetization_report.md

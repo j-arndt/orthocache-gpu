@@ -56,7 +56,7 @@ def main():
 
     # --- Phase 1: Profiling ---
     print()
-    print("[Phase 1/4] Profiling Benchmark")
+    print("[Phase 1/6] Profiling Benchmark")
     print("-" * 50)
     t0 = time.perf_counter()
     try:
@@ -68,7 +68,7 @@ def main():
 
     # --- Phase 2: Spectral Analysis ---
     print()
-    print("[Phase 2/4] Spectral Analysis Benchmark")
+    print("[Phase 2/6] Spectral Analysis Benchmark")
     print("-" * 50)
     t0 = time.perf_counter()
     try:
@@ -80,7 +80,7 @@ def main():
 
     # --- Phase 3: Compaction Benchmark ---
     print()
-    print("[Phase 3/4] Compaction Benchmark")
+    print("[Phase 3/6] Compaction Benchmark")
     print("-" * 50)
     t0 = time.perf_counter()
     try:
@@ -90,9 +90,38 @@ def main():
         print(f"[FAIL] Compaction benchmark FAILED: {e}")
         raise
 
-    # --- Phase 4: Figure Generation ---
+    # --- Phase 4: Reconstruction Error Validation ---
     print()
-    print("[Phase 4/4] Publication Figure Generation")
+    print("[Phase 4/6] Reconstruction Error Validation")
+    print("-" * 50)
+    t0 = time.perf_counter()
+    try:
+        from benchmarks.reconstruction_error import run_reconstruction_error
+        run_reconstruction_error()
+        print(f"[OK] Reconstruction error validation complete ({time.perf_counter() - t0:.1f}s)")
+    except ImportError:
+        print("[SKIP] reconstruction_error module not available")
+    except Exception as e:
+        print(f"[FAIL] Reconstruction error validation FAILED: {e}")
+        raise
+
+    # --- Phase 5: Target Validation ---
+    print()
+    print("[Phase 5/6] Target Validation")
+    print("-" * 50)
+    t0 = time.perf_counter()
+    try:
+        from benchmarks.target_validation import run_target_validation
+        run_target_validation()
+        print(f"[OK] Target validation complete ({time.perf_counter() - t0:.1f}s)")
+    except ImportError:
+        print("[SKIP] target_validation module not available")
+    except Exception as e:
+        print(f"[WARN] Target validation: {e}")
+
+    # --- Phase 6: Figure Generation ---
+    print()
+    print("[Phase 6/6] Publication Figure Generation")
     print("-" * 50)
     t0 = time.perf_counter()
     try:

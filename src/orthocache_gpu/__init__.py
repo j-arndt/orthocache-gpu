@@ -67,4 +67,5 @@ from orthocache_gpu.triton_kernels.fwht_fused_prototype import (
 )
 from orthocache_gpu.triton_kernels.fused_eviction import (
     fused_orthocache_attention,
+    fused_orthocache_attention_v2,
 )

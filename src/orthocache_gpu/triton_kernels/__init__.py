@@ -29,6 +29,7 @@ from orthocache_gpu.triton_kernels.fwht_fused_prototype import (
 )
 from orthocache_gpu.triton_kernels.fused_eviction import (
     fused_orthocache_attention,
+    fused_orthocache_attention_v2,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "triton_fwht_eviction",
     "generate_walsh_matrix",
     "fused_orthocache_attention",
+    "fused_orthocache_attention_v2",
 ]
