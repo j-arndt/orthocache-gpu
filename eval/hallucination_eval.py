@@ -143,25 +143,31 @@ def run_hallucination_eval(
         'hallucination_k_density': [],
     }
 
+    # Patch model ONCE with a shared OrthoCache
+    governor = ResidualGovernor(alpha=alpha) if alpha > 0 else None
+    orthocache = OrthoCache_GQA_Attention(
+        tau=tau, verbose=False, governor=governor,
+    )
+    patched_model = patch_model_attention(model, orthocache, min_layer=min_layer)
+
+    # Register governor reset hook once
+    reset_handle = None
+    if governor is not None:
+        first_patched_layer = model.model.layers[min_layer]
+        def make_reset_hook(gov):
+            def hook(module, args):
+                gov.reset()
+            return hook
+        reset_handle = first_patched_layer.register_forward_pre_hook(
+            make_reset_hook(governor)
+        )
+
     def evaluate_prompts(prompts, label, score_key, q_key, k_key):
         for i, prompt in enumerate(prompts):
-            # Create fresh OrthoCache for each prompt
-            governor = ResidualGovernor(alpha=alpha) if alpha > 0 else None
-            orthocache = OrthoCache_GQA_Attention(
-                tau=tau, verbose=False, governor=governor,
-            )
-            patched_model = patch_model_attention(model, orthocache, min_layer=min_layer)
-            
-            # Reset hook for governor
+            # Reset stats for each prompt
+            orthocache.reset_stats()
             if governor is not None:
-                first_patched_layer = model.model.layers[min_layer]
-                def make_reset_hook(gov):
-                    def hook(module, args):
-                        gov.reset()
-                    return hook
-                reset_handle = first_patched_layer.register_forward_pre_hook(
-                    make_reset_hook(governor)
-                )
+                governor.reset()
 
             # Tokenize and run
             input_ids = tokenizer(prompt, return_tensors="pt").input_ids.to(device)
@@ -187,16 +193,13 @@ def run_hallucination_eval(
                 
                 print(f"  [{label} {i+1}] H_score={max_h:.4f} "
                       f"(mean={mean_h:.4f}) "
-                      f"Q_high={max_q:.4f} K_high={max_k:.4f}")
-            
-            # Cleanup
-            if governor is not None:
-                reset_handle.remove()
-            
-            # Print token count for debugging
-            if not h_scores:
-                print(f"  [{label} {i+1}] SKIPPED (seq_len={input_ids.shape[1]}, "
-                      f"< 64 tiles, fell back to dense attention)")
+                      f"Q_high={max_q:.4f} K_high={max_k:.4f} "
+                      f"(seq_len={input_ids.shape[1]}, "
+                      f"tiles={input_ids.shape[1]//64})")
+            else:
+                print(f"  [{label} {i+1}] NO DATA (seq_len={input_ids.shape[1]}, "
+                      f"tiles={input_ids.shape[1]//64}, "
+                      f"layers_processed={orthocache.stats['layers_processed']})")
 
     print(f"\n{'='*60}")
     print(f"FACTUAL PROMPTS (expected H_score ~ 1)")
@@ -213,6 +216,10 @@ def run_hallucination_eval(
         HALLUCINATION_PROMPTS, "Halluc",
         'hallucination_scores', 'hallucination_q_intensity', 'hallucination_k_density'
     )
+
+    # Cleanup
+    if reset_handle is not None:
+        reset_handle.remove()
 
     # Compute separation metrics
     print(f"\n{'='*60}")
