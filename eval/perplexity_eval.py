@@ -275,6 +275,46 @@ class ResidualGovernor:
         self.eps_accum += eviction_rate
 
 
+class EntropyGovernor(ResidualGovernor):
+    """Barrier 2: Temporal entropy-based tau scaling.
+
+    Modulates tau based on the attention entropy from the current layer.
+    High entropy (diffuse attention) → more aggressive eviction (safe).
+    Low entropy (sharp attention) → conservative lockdown (protect).
+
+    tau_effective = tau_gov * 2 * sigmoid(beta * (H - h_median))
+
+    where tau_gov is the base residual governor's tau.
+    """
+
+    def __init__(self, alpha: float = 0.5, beta: float = 1.0,
+                 h_median: float = 1.56):
+        super().__init__(alpha=alpha)
+        self.beta = beta
+        self.h_median = h_median
+        self.current_entropy = None
+
+    def set_entropy(self, entropy: float):
+        """Set the attention entropy from the current layer's softmax."""
+        self.current_entropy = entropy
+
+    def get_tau_effective(self, tau_base: float) -> float:
+        """Compute tau with both residual and entropy modulation."""
+        import math
+        # Base residual governor
+        tau_gov = super().get_tau_effective(tau_base)
+
+        # Entropy modulation via sigmoid
+        if self.current_entropy is not None:
+            sigmoid = 1.0 / (1.0 + math.exp(
+                -self.beta * (self.current_entropy - self.h_median)
+            ))
+            # sigmoid > 0.5 when H > h_median → scale up (more aggressive)
+            # sigmoid < 0.5 when H < h_median → scale down (conservative)
+            tau_gov *= (2.0 * sigmoid)
+
+        return tau_gov
+
 class OrthoCache_GQA_Attention:
     """Wraps OrthoCache V3 GQA kernel as a drop-in for LlamaAttention.
 
