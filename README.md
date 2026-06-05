@@ -113,40 +113,67 @@ output, metadata = fused_orthocache_attention(
 
 The capstone optimization fuses three operations — FWHT spectral analysis, ζ eviction decision, and predicated attention — into a **single Triton kernel launch** with Split-K parallelization across all SMs.
 
-```
-                        ┌──────────────────────────────────────┐
-                        │     Single Kernel Launch             │
-                        │     Grid: (num_heads, num_splits)    │
-                        ├──────────────────────────────────────┤
-                        │                                      │
-  SM 0 ──►  Tiles [0, K, 2K, ...]  ──┐                       │
-  SM 1 ──►  Tiles [1, K+1, 2K+1, ...]│  Interleaved          │
-  SM 2 ──►  Tiles [2, K+2, 2K+2, ...]│  (Cyclic)             │
-  ...                                 │  Assignment           │
-  SM 23 ─►  Tiles [23, K+23, ...]  ──┘                       │
-                        │                                      │
-                        │  Per-SM Pipeline:                    │
-                        │  ┌────────────────────────────────┐  │
-                        │  │ Phase A: FWHT + ζ scoring      │  │
-                        │  │   K_tile loaded to SRAM (32KB) │  │
-                        │  │   W₆₄ · K → spectral energy   │  │
-                        │  │   ζ = E_high / E_low           │  │
-                        │  │   if ζ > ζ_max → SKIP tile     │  │
-                        │  ├────────────────────────────────┤  │
-                        │  │ Phase B: Attention (predicated)│  │
-                        │  │   K_tile REUSED from SRAM      │  │
-                        │  │   Q · K^T → logits             │  │
-                        │  │   V_tile loaded (32KB)         │  │
-                        │  │   Online softmax accumulate    │  │
-                        │  └────────────────────────────────┘  │
-                        │                                      │
-                        │  Log-Sum-Exp Reduction:              │
-                        │  Merge partial (m, l, acc) states    │
-                        │  from all splits → exact output      │
-                        └──────────────────────────────────────┘
+```mermaid
+flowchart TB
+    classDef kernel fill:#1a1b26,stroke:#58a6ff,stroke-width:2px,color:#e6edf3
+    classDef sm fill:#161b22,stroke:#8b949e,stroke-width:1px,color:#c9d1d9
+    classDef phaseA fill:#1c2333,stroke:#d2a8ff,stroke-width:2px,color:#d2a8ff
+    classDef phaseB fill:#1c2333,stroke:#58a6ff,stroke-width:2px,color:#58a6ff
+    classDef evict fill:#2d1b1b,stroke:#f85149,stroke-width:2px,color:#f85149
+    classDef keep fill:#1b2d1b,stroke:#3fb950,stroke-width:2px,color:#3fb950
+    classDef reduce fill:#1a1b26,stroke:#f0883e,stroke-width:2px,color:#f0883e
+    classDef output fill:#0d1117,stroke:#3fb950,stroke-width:3px,color:#3fb950
+    classDef sram fill:#1c2333,stroke:#8b949e,stroke-dasharray:5 5,color:#8b949e
 
-  SRAM Budget: 81 KB peak < 100 KB/SM limit ✓
-  DRAM Savings: K loaded once (not twice), V skipped for evicted tiles
+    LAUNCH["🚀 Single Kernel Launch<br/><b>Grid: (num_heads, num_splits)</b><br/>32 heads × auto splits → 24 SMs saturated"]:::kernel
+    LAUNCH --> TILE_ASSIGN
+
+    TILE_ASSIGN["<b>Interleaved (Cyclic) Tile Assignment</b><br/>Each SM gets tiles [s, s+K, s+2K, ...]<br/>Uniform mix of dense + sparse regions"]:::kernel
+    TILE_ASSIGN --> SM0 & SM1 & SM2 & SMN
+
+    SM0["<b>SM 0</b><br/>Tiles 0, K, 2K, ..."]:::sm
+    SM1["<b>SM 1</b><br/>Tiles 1, K+1, 2K+1, ..."]:::sm
+    SM2["<b>SM 2</b><br/>Tiles 2, K+2, 2K+2, ..."]:::sm
+    SMN["<b>SM 23</b><br/>Tiles 23, K+23, ..."]:::sm
+
+    SM0 --> LOAD_K
+    SM1 --> LOAD_K
+    SM2 --> LOAD_K
+    SMN --> LOAD_K
+
+    subgraph PIPELINE ["Per-SM Pipeline (× 24 SMs)"]
+        direction TB
+        LOAD_K["📥 <b>Load K_tile to SRAM</b><br/>32 KB · 64 tokens × 128 dims × fp32"]:::sram
+
+        subgraph PHASE_A ["Phase A: Spectral Eviction"]
+            direction TB
+            FWHT["<b>FWHT Transform</b><br/>W₆₄ · K_tile → spectral coefficients<br/><i>K_tile STAYS in SRAM</i>"]:::phaseA
+            ENERGY["<b>Band Energy Scoring</b><br/>E_low = Σ|c[0:8]|² — E_high = Σ|c[56:64]|²<br/>ζ = E_high / E_low"]:::phaseA
+            DECISION{{"ζ > ζ_max ?"}}:::phaseA
+            FWHT --> ENERGY --> DECISION
+        end
+
+        LOAD_K --> FWHT
+        DECISION -- "YES: noise tile" --> SKIP["⏭️ <b>SKIP</b><br/>No V load · no attention<br/>DRAM saved: 32 KB"]:::evict
+        DECISION -- "NO: semantic tile" --> ATTN
+
+        subgraph PHASE_B ["Phase B: Predicated Attention"]
+            direction TB
+            ATTN["<b>Q · K_tileᵀ → logits</b><br/>K_tile REUSED from SRAM · zero reload"]:::phaseB
+            LOAD_V["📥 <b>Load V_tile from HBM</b><br/>32 KB"]:::sram
+            SOFTMAX["<b>Online Softmax Accumulate</b><br/>Update running m, l, acc"]:::phaseB
+            ATTN --> LOAD_V --> SOFTMAX
+        end
+
+        SKIP --> PARTIAL
+        SOFTMAX --> PARTIAL
+        PARTIAL["📤 <b>Partial State</b><br/>m_partial, l_partial, acc_partial"]:::sm
+    end
+
+    PARTIAL --> REDUCE
+    REDUCE["<b>Log-Sum-Exp Reduction Kernel</b><br/>Grid: (num_heads,)<br/>Merge all partial states → numerically exact output"]:::reduce
+    REDUCE --> OUTPUT
+    OUTPUT["✅ <b>Attention Output</b><br/>(num_heads, head_dim)<br/><br/>SRAM: 81 KB peak < 100 KB/SM ✓<br/>DRAM: K loaded once · V skipped for evicted tiles"]:::output
 ```
 
 ### Why Interleaved (Cyclic) Tile Assignment?
