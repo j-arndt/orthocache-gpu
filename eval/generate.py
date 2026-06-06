@@ -85,6 +85,17 @@ def build_needle_prompt(num_filler_repeats: int = 8) -> str:
     return filler_before + NEEDLE_SENTENCE + " " + filler_after + NEEDLE_QUESTION
 
 
+def build_empty_haystack(num_filler_repeats: int = 8) -> str:
+    """Build an EMPTY haystack — same filler, NO needle, same question.
+    
+    Gold 3: The model will desperately search for BLUE-FALCON-42 (high Q_high)
+    but the fact doesn't exist (near-zero K_high for needle tile), causing
+    the H_score to spike violently. This is the hallucination trigger.
+    """
+    filler = HAYSTACK_FILLER * num_filler_repeats
+    return filler + NEEDLE_QUESTION
+
+
 # ============================================================================
 # Generation Engine
 # ============================================================================
@@ -322,6 +333,8 @@ def main():
     parser.add_argument("--top-p", type=float, default=0.9)
     parser.add_argument("--needle", action="store_true",
                         help="Run Needle-In-A-Haystack test")
+    parser.add_argument("--empty-haystack", action="store_true",
+                        help="Run EMPTY haystack (no needle) to trigger hallucination")
     parser.add_argument("--needle-repeats", type=int, default=8,
                         help="Filler repetitions for needle test")
     parser.add_argument("--compare", action="store_true",
@@ -354,6 +367,14 @@ def main():
         print(f"NEEDLE-IN-A-HAYSTACK TEST")
         print(f"{'='*60}")
         print(f"  Needle: '{NEEDLE_SENTENCE}'")
+        print(f"  Filler repeats: {args.needle_repeats}")
+    elif args.empty_haystack:
+        prompt = build_empty_haystack(args.needle_repeats)
+        print(f"\n{'='*60}")
+        print(f"EMPTY HAYSTACK (Gold 3: Hallucination Trigger)")
+        print(f"{'='*60}")
+        print(f"  Needle: ABSENT — expecting hallucination")
+        print(f"  Question: '{NEEDLE_QUESTION.strip()}'")
         print(f"  Filler repeats: {args.needle_repeats}")
     else:
         prompt = args.prompt

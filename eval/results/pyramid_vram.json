@@ -1,0 +1,1625 @@
+{
+  "model": "C:\\LearningFolder\\tinyllama1.1b",
+  "profile": "ungoverned",
+  "profile_description": "No governor (alpha=0.0), tau=1.06, 2048 tokens",
+  "physical_allocation": {
+    "seq_len": 2048,
+    "device": "cpu",
+    "dense_allocated_bytes": 46137344,
+    "pyramid_allocated_bytes": 42336256,
+    "saved_bytes": 3801088,
+    "savings_pct": 8.24
+  },
+  "analytical_results": [
+    {
+      "seq_len": 512,
+      "num_layers": 22,
+      "dense_bytes": 11534336,
+      "pyramid_bytes": 10813440,
+      "saved_bytes": 720896,
+      "savings_pct": 6.25,
+      "per_layer": [
+        {
+          "layer": 0,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 1,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 2,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 3,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 4,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 5,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 6,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 7,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 8,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 9,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 10,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 11,
+          "eviction": 0.573,
+          "retention": 0.42700000000000005,
+          "dense_tokens": 512,
+          "pyramid_tokens": 256,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 262144,
+          "savings_pct": 50.0
+        },
+        {
+          "layer": 12,
+          "eviction": 0.331,
+          "retention": 0.669,
+          "dense_tokens": 512,
+          "pyramid_tokens": 384,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 393216,
+          "savings_pct": 25.0
+        },
+        {
+          "layer": 13,
+          "eviction": 0.28,
+          "retention": 0.72,
+          "dense_tokens": 512,
+          "pyramid_tokens": 384,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 393216,
+          "savings_pct": 25.0
+        },
+        {
+          "layer": 14,
+          "eviction": 0.22,
+          "retention": 0.78,
+          "dense_tokens": 512,
+          "pyramid_tokens": 448,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 458752,
+          "savings_pct": 12.5
+        },
+        {
+          "layer": 15,
+          "eviction": 0.18,
+          "retention": 0.8200000000000001,
+          "dense_tokens": 512,
+          "pyramid_tokens": 448,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 458752,
+          "savings_pct": 12.5
+        },
+        {
+          "layer": 16,
+          "eviction": 0.14,
+          "retention": 0.86,
+          "dense_tokens": 512,
+          "pyramid_tokens": 448,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 458752,
+          "savings_pct": 12.5
+        },
+        {
+          "layer": 17,
+          "eviction": 0.1,
+          "retention": 0.9,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 18,
+          "eviction": 0.07,
+          "retention": 0.9299999999999999,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 19,
+          "eviction": 0.04,
+          "retention": 0.96,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 20,
+          "eviction": 0.02,
+          "retention": 0.98,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 21,
+          "eviction": 0.01,
+          "retention": 0.99,
+          "dense_tokens": 512,
+          "pyramid_tokens": 512,
+          "dense_bytes": 524288,
+          "pyramid_bytes": 524288,
+          "savings_pct": 0.0
+        }
+      ]
+    },
+    {
+      "seq_len": 1024,
+      "num_layers": 22,
+      "dense_bytes": 23068672,
+      "pyramid_bytes": 21299200,
+      "saved_bytes": 1769472,
+      "savings_pct": 7.67,
+      "per_layer": [
+        {
+          "layer": 0,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 1,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 2,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 3,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 4,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 5,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 6,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 7,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 8,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 9,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 10,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 11,
+          "eviction": 0.573,
+          "retention": 0.42700000000000005,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 448,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 458752,
+          "savings_pct": 56.2
+        },
+        {
+          "layer": 12,
+          "eviction": 0.331,
+          "retention": 0.669,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 704,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 720896,
+          "savings_pct": 31.2
+        },
+        {
+          "layer": 13,
+          "eviction": 0.28,
+          "retention": 0.72,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 768,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 786432,
+          "savings_pct": 25.0
+        },
+        {
+          "layer": 14,
+          "eviction": 0.22,
+          "retention": 0.78,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 832,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 851968,
+          "savings_pct": 18.8
+        },
+        {
+          "layer": 15,
+          "eviction": 0.18,
+          "retention": 0.8200000000000001,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 896,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 917504,
+          "savings_pct": 12.5
+        },
+        {
+          "layer": 16,
+          "eviction": 0.14,
+          "retention": 0.86,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 896,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 917504,
+          "savings_pct": 12.5
+        },
+        {
+          "layer": 17,
+          "eviction": 0.1,
+          "retention": 0.9,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 960,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 983040,
+          "savings_pct": 6.2
+        },
+        {
+          "layer": 18,
+          "eviction": 0.07,
+          "retention": 0.9299999999999999,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 960,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 983040,
+          "savings_pct": 6.2
+        },
+        {
+          "layer": 19,
+          "eviction": 0.04,
+          "retention": 0.96,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 20,
+          "eviction": 0.02,
+          "retention": 0.98,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 21,
+          "eviction": 0.01,
+          "retention": 0.99,
+          "dense_tokens": 1024,
+          "pyramid_tokens": 1024,
+          "dense_bytes": 1048576,
+          "pyramid_bytes": 1048576,
+          "savings_pct": 0.0
+        }
+      ]
+    },
+    {
+      "seq_len": 2048,
+      "num_layers": 22,
+      "dense_bytes": 46137344,
+      "pyramid_bytes": 42336256,
+      "saved_bytes": 3801088,
+      "savings_pct": 8.24,
+      "per_layer": [
+        {
+          "layer": 0,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 1,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 2,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 3,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 4,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 5,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 6,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 7,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 8,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 9,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 10,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 11,
+          "eviction": 0.573,
+          "retention": 0.42700000000000005,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 896,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 917504,
+          "savings_pct": 56.2
+        },
+        {
+          "layer": 12,
+          "eviction": 0.331,
+          "retention": 0.669,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 1408,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 1441792,
+          "savings_pct": 31.2
+        },
+        {
+          "layer": 13,
+          "eviction": 0.28,
+          "retention": 0.72,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 1536,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 1572864,
+          "savings_pct": 25.0
+        },
+        {
+          "layer": 14,
+          "eviction": 0.22,
+          "retention": 0.78,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 1600,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 1638400,
+          "savings_pct": 21.9
+        },
+        {
+          "layer": 15,
+          "eviction": 0.18,
+          "retention": 0.8200000000000001,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 1728,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 1769472,
+          "savings_pct": 15.6
+        },
+        {
+          "layer": 16,
+          "eviction": 0.14,
+          "retention": 0.86,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 1792,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 1835008,
+          "savings_pct": 12.5
+        },
+        {
+          "layer": 17,
+          "eviction": 0.1,
+          "retention": 0.9,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 1856,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 1900544,
+          "savings_pct": 9.4
+        },
+        {
+          "layer": 18,
+          "eviction": 0.07,
+          "retention": 0.9299999999999999,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 1920,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 1966080,
+          "savings_pct": 6.2
+        },
+        {
+          "layer": 19,
+          "eviction": 0.04,
+          "retention": 0.96,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 1984,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2031616,
+          "savings_pct": 3.1
+        },
+        {
+          "layer": 20,
+          "eviction": 0.02,
+          "retention": 0.98,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 21,
+          "eviction": 0.01,
+          "retention": 0.99,
+          "dense_tokens": 2048,
+          "pyramid_tokens": 2048,
+          "dense_bytes": 2097152,
+          "pyramid_bytes": 2097152,
+          "savings_pct": 0.0
+        }
+      ]
+    },
+    {
+      "seq_len": 4096,
+      "num_layers": 22,
+      "dense_bytes": 92274688,
+      "pyramid_bytes": 84410368,
+      "saved_bytes": 7864320,
+      "savings_pct": 8.52,
+      "per_layer": [
+        {
+          "layer": 0,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 1,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 2,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 3,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 4,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 5,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 6,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 7,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 8,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 9,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 10,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 11,
+          "eviction": 0.573,
+          "retention": 0.42700000000000005,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 1792,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 1835008,
+          "savings_pct": 56.2
+        },
+        {
+          "layer": 12,
+          "eviction": 0.331,
+          "retention": 0.669,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 2752,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 2818048,
+          "savings_pct": 32.8
+        },
+        {
+          "layer": 13,
+          "eviction": 0.28,
+          "retention": 0.72,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 3008,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 3080192,
+          "savings_pct": 26.6
+        },
+        {
+          "layer": 14,
+          "eviction": 0.22,
+          "retention": 0.78,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 3200,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 3276800,
+          "savings_pct": 21.9
+        },
+        {
+          "layer": 15,
+          "eviction": 0.18,
+          "retention": 0.8200000000000001,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 3392,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 3473408,
+          "savings_pct": 17.2
+        },
+        {
+          "layer": 16,
+          "eviction": 0.14,
+          "retention": 0.86,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 3584,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 3670016,
+          "savings_pct": 12.5
+        },
+        {
+          "layer": 17,
+          "eviction": 0.1,
+          "retention": 0.9,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 3712,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 3801088,
+          "savings_pct": 9.4
+        },
+        {
+          "layer": 18,
+          "eviction": 0.07,
+          "retention": 0.9299999999999999,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 3840,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 3932160,
+          "savings_pct": 6.2
+        },
+        {
+          "layer": 19,
+          "eviction": 0.04,
+          "retention": 0.96,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 3968,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4063232,
+          "savings_pct": 3.1
+        },
+        {
+          "layer": 20,
+          "eviction": 0.02,
+          "retention": 0.98,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4032,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4128768,
+          "savings_pct": 1.6
+        },
+        {
+          "layer": 21,
+          "eviction": 0.01,
+          "retention": 0.99,
+          "dense_tokens": 4096,
+          "pyramid_tokens": 4096,
+          "dense_bytes": 4194304,
+          "pyramid_bytes": 4194304,
+          "savings_pct": 0.0
+        }
+      ]
+    },
+    {
+      "seq_len": 8192,
+      "num_layers": 22,
+      "dense_bytes": 184549376,
+      "pyramid_bytes": 168427520,
+      "saved_bytes": 16121856,
+      "savings_pct": 8.74,
+      "per_layer": [
+        {
+          "layer": 0,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 1,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 2,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 3,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 4,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 5,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 6,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 7,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 8,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 9,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 10,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8192,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8388608,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 11,
+          "eviction": 0.573,
+          "retention": 0.42700000000000005,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 3520,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 3604480,
+          "savings_pct": 57.0
+        },
+        {
+          "layer": 12,
+          "eviction": 0.331,
+          "retention": 0.669,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 5504,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 5636096,
+          "savings_pct": 32.8
+        },
+        {
+          "layer": 13,
+          "eviction": 0.28,
+          "retention": 0.72,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 5952,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 6094848,
+          "savings_pct": 27.3
+        },
+        {
+          "layer": 14,
+          "eviction": 0.22,
+          "retention": 0.78,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 6400,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 6553600,
+          "savings_pct": 21.9
+        },
+        {
+          "layer": 15,
+          "eviction": 0.18,
+          "retention": 0.8200000000000001,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 6720,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 6881280,
+          "savings_pct": 18.0
+        },
+        {
+          "layer": 16,
+          "eviction": 0.14,
+          "retention": 0.86,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 7104,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 7274496,
+          "savings_pct": 13.3
+        },
+        {
+          "layer": 17,
+          "eviction": 0.1,
+          "retention": 0.9,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 7424,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 7602176,
+          "savings_pct": 9.4
+        },
+        {
+          "layer": 18,
+          "eviction": 0.07,
+          "retention": 0.9299999999999999,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 7680,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 7864320,
+          "savings_pct": 6.2
+        },
+        {
+          "layer": 19,
+          "eviction": 0.04,
+          "retention": 0.96,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 7872,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8060928,
+          "savings_pct": 3.9
+        },
+        {
+          "layer": 20,
+          "eviction": 0.02,
+          "retention": 0.98,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8064,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8257536,
+          "savings_pct": 1.6
+        },
+        {
+          "layer": 21,
+          "eviction": 0.01,
+          "retention": 0.99,
+          "dense_tokens": 8192,
+          "pyramid_tokens": 8128,
+          "dense_bytes": 8388608,
+          "pyramid_bytes": 8323072,
+          "savings_pct": 0.8
+        }
+      ]
+    },
+    {
+      "seq_len": 16384,
+      "num_layers": 22,
+      "dense_bytes": 369098752,
+      "pyramid_bytes": 336527360,
+      "saved_bytes": 32571392,
+      "savings_pct": 8.82,
+      "per_layer": [
+        {
+          "layer": 0,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 1,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 2,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 3,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 4,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 5,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 6,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 7,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 8,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 9,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 10,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16384,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16777216,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 11,
+          "eviction": 0.573,
+          "retention": 0.42700000000000005,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 7040,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 7208960,
+          "savings_pct": 57.0
+        },
+        {
+          "layer": 12,
+          "eviction": 0.331,
+          "retention": 0.669,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 11008,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 11272192,
+          "savings_pct": 32.8
+        },
+        {
+          "layer": 13,
+          "eviction": 0.28,
+          "retention": 0.72,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 11840,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 12124160,
+          "savings_pct": 27.7
+        },
+        {
+          "layer": 14,
+          "eviction": 0.22,
+          "retention": 0.78,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 12800,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 13107200,
+          "savings_pct": 21.9
+        },
+        {
+          "layer": 15,
+          "eviction": 0.18,
+          "retention": 0.8200000000000001,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 13440,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 13762560,
+          "savings_pct": 18.0
+        },
+        {
+          "layer": 16,
+          "eviction": 0.14,
+          "retention": 0.86,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 14144,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 14483456,
+          "savings_pct": 13.7
+        },
+        {
+          "layer": 17,
+          "eviction": 0.1,
+          "retention": 0.9,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 14784,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 15138816,
+          "savings_pct": 9.8
+        },
+        {
+          "layer": 18,
+          "eviction": 0.07,
+          "retention": 0.9299999999999999,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 15296,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 15663104,
+          "savings_pct": 6.6
+        },
+        {
+          "layer": 19,
+          "eviction": 0.04,
+          "retention": 0.96,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 15744,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16121856,
+          "savings_pct": 3.9
+        },
+        {
+          "layer": 20,
+          "eviction": 0.02,
+          "retention": 0.98,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16064,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16449536,
+          "savings_pct": 2.0
+        },
+        {
+          "layer": 21,
+          "eviction": 0.01,
+          "retention": 0.99,
+          "dense_tokens": 16384,
+          "pyramid_tokens": 16256,
+          "dense_bytes": 16777216,
+          "pyramid_bytes": 16646144,
+          "savings_pct": 0.8
+        }
+      ]
+    },
+    {
+      "seq_len": 32768,
+      "num_layers": 22,
+      "dense_bytes": 738197504,
+      "pyramid_bytes": 672595968,
+      "saved_bytes": 65601536,
+      "savings_pct": 8.89,
+      "per_layer": [
+        {
+          "layer": 0,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 1,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 2,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 3,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 4,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 5,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 6,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 7,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 8,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 9,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 10,
+          "eviction": 0.0,
+          "retention": 1.0,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32768,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33554432,
+          "savings_pct": 0.0
+        },
+        {
+          "layer": 11,
+          "eviction": 0.573,
+          "retention": 0.42700000000000005,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 14016,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 14352384,
+          "savings_pct": 57.2
+        },
+        {
+          "layer": 12,
+          "eviction": 0.331,
+          "retention": 0.669,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 21952,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 22478848,
+          "savings_pct": 33.0
+        },
+        {
+          "layer": 13,
+          "eviction": 0.28,
+          "retention": 0.72,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 23616,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 24182784,
+          "savings_pct": 27.9
+        },
+        {
+          "layer": 14,
+          "eviction": 0.22,
+          "retention": 0.78,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 25600,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 26214400,
+          "savings_pct": 21.9
+        },
+        {
+          "layer": 15,
+          "eviction": 0.18,
+          "retention": 0.8200000000000001,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 26880,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 27525120,
+          "savings_pct": 18.0
+        },
+        {
+          "layer": 16,
+          "eviction": 0.14,
+          "retention": 0.86,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 28224,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 28901376,
+          "savings_pct": 13.9
+        },
+        {
+          "layer": 17,
+          "eviction": 0.1,
+          "retention": 0.9,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 29504,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 30212096,
+          "savings_pct": 10.0
+        },
+        {
+          "layer": 18,
+          "eviction": 0.07,
+          "retention": 0.9299999999999999,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 30528,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 31260672,
+          "savings_pct": 6.8
+        },
+        {
+          "layer": 19,
+          "eviction": 0.04,
+          "retention": 0.96,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 31488,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 32243712,
+          "savings_pct": 3.9
+        },
+        {
+          "layer": 20,
+          "eviction": 0.02,
+          "retention": 0.98,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32128,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 32899072,
+          "savings_pct": 2.0
+        },
+        {
+          "layer": 21,
+          "eviction": 0.01,
+          "retention": 0.99,
+          "dense_tokens": 32768,
+          "pyramid_tokens": 32448,
+          "dense_bytes": 33554432,
+          "pyramid_bytes": 33226752,
+          "savings_pct": 1.0
+        }
+      ]
+    }
+  ]
+}
