@@ -43,7 +43,7 @@ OrthoCache is a **KV-cache eviction algorithm** that uses spectral analysis (Wal
 git clone https://github.com/j-arndt/orthocache-gpu.git && cd orthocache-gpu
 pip install -e ".[dev]"
 
-# Run the test suite (47 tests)
+# Run the test suite (59 tests)
 pytest
 
 # Run benchmarks (requires CUDA GPU)
@@ -128,6 +128,59 @@ output, metadata = fused_orthocache_attention_v3_gqa(
 **Mathematical guarantee** ([formally verified in Lean 4](#lean-4-formal-verification)):
 
 $$\max_{g \in [1, G]} \left( \|Q_{g, \text{high}}\|_2 \cdot \|K_{\text{high}}\|_2 \right) \le \tau \implies \text{tile eviction is safe for ALL } G \text{ heads}$$
+
+---
+
+## Evaluation Harness
+
+The `eval/` directory contains a complete evaluation suite for validating OrthoCache correctness and quality.
+
+### Perplexity Evaluation
+
+```bash
+# Full tau sweep (256 tokens, CPU)
+python eval/perplexity_eval.py --model-path /path/to/tinyllama1.1b --device cpu
+```
+
+### Autoregressive Generation (Needle-In-A-Haystack)
+
+```bash
+# NIAH test — verifies perfect retrieval under eviction
+python eval/generate.py --model-path /path/to/tinyllama1.1b \
+    --needle --tau 1.06 --alpha 0.0 --device cpu
+
+# With Spectral Auto-Clutch (Platinum 2)
+python eval/generate.py --model-path /path/to/tinyllama1.1b \
+    --needle --tau 1.06 --auto-clutch --device cpu
+
+# Hallucination suppression (Platinum 3)
+python eval/generate.py --model-path /path/to/tinyllama1.1b \
+    --empty-haystack --tau 1.06 --amputate --device cpu
+```
+
+---
+
+## End-to-End Validation (TinyLlama 1.1B)
+
+| Test | Command | Result |
+|:---|:---|:---|
+| Perplexity (256-tok) | `perplexity_eval.py` | PPL 7.74 at tau=0.677 (dense baseline: 6.91) |
+| Perplexity (2048-tok) | `perplexity_eval.py` | Denoising valley at tau=1.06: PPL **improves** under eviction |
+| NIAH (ungoverned) | `generate.py --needle` | Perfect retrieval at 73-93% decode skip |
+| NIAH (auto-clutch) | `generate.py --needle --auto-clutch` | Perfect retrieval, autonomous alpha modulation |
+| Hallucination (empty haystack) | `generate.py --empty-haystack --amputate` | Fabrication suppressed: `"3425"` → hedged refusal |
+| Gradient flow (regularizer) | `SpectralRegularizer.validate_gradient_flow()` | Finite, nonzero gradients through Walsh projection |
+
+---
+
+## Platinum Paradigms
+
+Four "Platinum" upgrades extend the core spectral eviction engine:
+
+1. **Walsh Subspace Projection** — Exact spectral Q-norm via block averaging (72 FLOPs). Tightens the Cauchy-Schwarz bound, boosting decode skip rate from 57-79% to 73-93%.
+2. **Spectral Auto-Clutch** — Autonomously switches between generative (α=0.3) and retrieval (α=0.0) modes using per-token Q_high energy.
+3. **Active Hallucination Amputation** — Wires H_score into softmax temperature to suppress fabrication when the model searches for non-existent information.
+4. **Spectral Pre-Training Regularizer** — Differentiable Walsh-domain penalty that forces models to learn natively sparse KV representations.
 
 ---
 
@@ -256,6 +309,7 @@ cd proofs && lake build
 | [`docs/technical_report.md`](docs/technical_report.md) | GPU kernel architecture, benchmark methodology, performance analysis |
 | [`docs/cost_benefit_analysis.md`](docs/cost_benefit_analysis.md) | NVIDIA fleet economics, consumer GPU analysis, cloud cost impact |
 | [`paper/orthocache_gpu.tex`](paper/orthocache_gpu.tex) | GPU-specific paper (IEEE format) |
+| [`eval/`](eval/) | Perplexity sweeps, NIAH generation, hallucination eval, entropy calibration |
 
 ---
 
@@ -273,12 +327,30 @@ orthocache-gpu/
 │   ├── lean_attention.py             # Pure PyTorch fallback
 │   ├── bandwidth_model.py            # Multi-GPU bandwidth model
 │   ├── perfect_eviction.py           # Eviction regime classifier
+│   ├── eviction_governor.py          # Residual Governor (Pareto perplexity control)
+│   ├── norm_cache.py                 # SpectralNormCache (O(1) decode gate)
+│   ├── reference.py                  # PyTorch reference implementation
+│   ├── spectral_clutch.py            # Platinum 2: Spectral Auto-Clutch
+│   ├── hallucination_gate.py         # Platinum 3: Hallucination Amputator
+│   ├── spectral_regularizer.py       # Platinum 4: Spectral Pre-Training Regularizer
+│   ├── bucketed_attention.py         # Bucketed attention variant
+│   ├── cuda_bridge.py                # CUDA bridge utilities
+│   ├── dynamic_attention.py          # Dynamic attention routing
 │   └── triton_kernels/
+│       ├── __init__.py               # Kernel exports
 │       ├── fused_eviction.py         # V2 Split-K God Kernel + V1 sequential
 │       ├── gqa_eviction.py           # V3 GQA Cauchy-Schwarz spectral gate
+│       ├── decode_gate.py            # O(1) decode gate + Platinum 1 Walsh Subspace Projection
 │       ├── sparse_attention.py       # Block-sparse attention kernel
 │       ├── indirect_attention.py     # Indirect indexing kernel
 │       └── fwht_fused_prototype.py   # FWHT spectral eviction (TILE=64)
+├── eval/
+│   ├── perplexity_eval.py            # Full perplexity evaluation harness (PPL sweep + FWHT)
+│   ├── generate.py                   # Autoregressive generation (NIAH, hallucination, Platinum)
+│   ├── hallucination_eval.py         # Gold 3: Hallucination Exhaust baseline
+│   ├── pyramid_eval.py              # Pyramid VRAM scaling evaluation
+│   ├── calibrate_entropy.py          # Entropy governor calibration
+│   └── results/                      # JSON results from all evaluation runs (14 files)
 ├── proofs/                           # Lean 4 formal verification (5 modules)
 │   ├── OrthoCacheMath/
 │   │   ├── ParsevalWHT.lean          # WHT orthogonality + Parseval's identity
