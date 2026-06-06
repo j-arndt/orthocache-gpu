@@ -143,15 +143,14 @@ if HAS_TRITON:
         # (Using max instead of median for Triton simplicity — conservative)
         max_q_norm_sq = 0.0
         
+        cols = tl.arange(0, head_dim)
         for g in range(G):
             q_head_idx = kv_h * G + g
             q_offset = q_head_idx * stride_q_head
             
-            # Load Q vector and compute squared L2 norm
-            q_norm_sq = 0.0
-            for d in range(head_dim):
-                q_val = tl.load(Q_ptr + q_offset + d)
-                q_norm_sq += q_val * q_val
+            # Vectorized load of Q vector and compute squared L2 norm
+            q_val = tl.load(Q_ptr + q_offset + cols)
+            q_norm_sq = tl.sum(q_val * q_val)
             
             if q_norm_sq > max_q_norm_sq:
                 max_q_norm_sq = q_norm_sq
