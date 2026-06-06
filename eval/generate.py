@@ -1,26 +1,26 @@
-"""Gold 1+3+4 Convergence: Autoregressive Generation with OrthoCache.
+"""Gold 1+3+4 + Platinum 1+2+3: Autoregressive Generation with OrthoCache.
 
 Splits the monkey-patched attention into two physics:
   PREFILL: Full FWHT, populate SpectralNormCache (one-time O(N log N))
   DECODE:  O(1) gate from cached norms (per token)
 
-This harness enables:
-  Gold 1: Measure decode latency with/without norm cache bypass
-  Gold 3: Watch Hallucination Exhaust (H_score) evolve per decode step
-  Gold 4: Needle-In-A-Haystack retrieval accuracy under eviction
+Platinum upgrades:
+  Platinum 1: Walsh Subspace Projection (tight CS bound, 72 FLOPs)
+  Platinum 2: Spectral Auto-Clutch (autonomous regime switching)
+  Platinum 3: Active Hallucination Amputation (temperature cure)
 
 Usage:
     # Basic generation
     python eval/generate.py --model-path C:/LearningFolder/tinyllama1.1b \\
         --prompt "The capital of France is" --max-tokens 50 --tau 1.06
 
-    # Needle-In-A-Haystack
+    # Needle-In-A-Haystack with auto-clutch
     python eval/generate.py --model-path C:/LearningFolder/tinyllama1.1b \\
-        --needle --tau 1.06
+        --needle --tau 1.06 --auto-clutch
 
-    # Compare dense vs OrthoCache
+    # Hallucination suppression
     python eval/generate.py --model-path C:/LearningFolder/tinyllama1.1b \\
-        --prompt "Explain quantum entanglement:" --max-tokens 100 --compare
+        --empty-haystack --tau 1.06 --amputate
 """
 
 import argparse
@@ -52,6 +52,18 @@ try:
     from orthocache_gpu.eviction_governor import ResidualGovernor
 except ImportError:
     ResidualGovernor = None
+
+# Platinum 2: Spectral Auto-Clutch
+try:
+    from orthocache_gpu.spectral_clutch import SpectralAutoClutch
+except ImportError:
+    SpectralAutoClutch = None
+
+# Platinum 3: Hallucination Amputator
+try:
+    from orthocache_gpu.hallucination_gate import HallucinationAmputator
+except ImportError:
+    HallucinationAmputator = None
 
 
 # ============================================================================
@@ -111,6 +123,8 @@ def generate_with_orthocache(
     temperature: float = 0.7,
     top_p: float = 0.9,
     verbose: bool = True,
+    auto_clutch: bool = False,
+    amputate: bool = False,
 ) -> Dict:
     """Generate text token-by-token with OrthoCache prefill/decode split.
     
@@ -135,6 +149,20 @@ def generate_with_orthocache(
     orthocache = OrthoCache_GQA_Attention(
         tau=tau, verbose=False, governor=governor,
     )
+    
+    # Platinum 2: Create Auto-Clutch if requested
+    clutch = None
+    if auto_clutch and SpectralAutoClutch is not None:
+        clutch = SpectralAutoClutch(alpha_base=alpha if alpha > 0 else 0.3, gamma=150.0)
+        if verbose:
+            print(f"  [PLATINUM 2] Auto-Clutch enabled (alpha_base={clutch.alpha_base}, gamma={clutch.gamma})")
+    
+    # Platinum 3: Create Amputator if requested
+    amputator = None
+    if amputate and HallucinationAmputator is not None:
+        amputator = HallucinationAmputator.from_gold3_data()
+        if verbose:
+            print(f"  [PLATINUM 3] Amputator enabled (threshold={amputator.h_threshold}, lam={amputator.lam:.1f})")
     
     # Create SpectralNormCache
     # Max tiles = max_seq_len / tile_size
@@ -256,13 +284,28 @@ def generate_with_orthocache(
         decode_times.append(decode_ms)
         
         past_key_values = outputs.past_key_values
-        next_token_logits = outputs.logits[:, -1, :] / temperature
         
         # Collect Gold 3 telemetry for this step
         step_h_scores = orthocache.stats['hallucination_scores']
+        max_h = 0.0
         if step_h_scores:
             max_h = max(step_h_scores)
             h_scores_per_step.append(max_h)
+        
+        # Platinum 2: Auto-Clutch — modulate governor alpha from Q_high energy
+        if clutch is not None and governor is not None:
+            q_search = orthocache.stats.get('q_search_intensity', [])
+            if q_search:
+                q_high_norm = q_search[-1]  # Latest Q_high norm (already exact via Platinum 1)
+                alpha_t = clutch.compute_alpha(q_high_norm)
+                governor.alpha = alpha_t  # Dynamic alpha for next step
+        
+        # Platinum 3: Amputator — modulate temperature from H_score
+        effective_temp = temperature
+        if amputator is not None and max_h > 0:
+            effective_temp = amputator.modulate_temperature(max_h, t_base=temperature)
+        
+        next_token_logits = outputs.logits[:, -1, :] / effective_temp
         
         # Print progress
         if verbose and (step < 5 or step % 10 == 0):
@@ -273,6 +316,12 @@ def generate_with_orthocache(
             if orthocache.stats['decode_tiles_total'] > 0:
                 skip_rate = orthocache.stats['decode_tiles_skipped'] / orthocache.stats['decode_tiles_total']
                 decode_info += f" skip={skip_rate*100:.0f}%"
+            if clutch is not None and clutch.alpha_history:
+                decode_info += f" a={clutch.alpha_history[-1]:.3f}"
+            if amputator is not None and amputator.interventions:
+                last_i = amputator.interventions[-1]
+                if last_i.get('intervention'):
+                    decode_info += f" T={last_i['t_safe']:.2f}!"
             print(decode_info)
     
     # Cleanup
@@ -302,6 +351,14 @@ def generate_with_orthocache(
         'norm_cache_populated': norm_cache.is_populated,
     }
     
+    # Platinum 2: Auto-Clutch telemetry
+    if clutch is not None:
+        results['auto_clutch'] = clutch.get_telemetry()
+    
+    # Platinum 3: Amputator telemetry
+    if amputator is not None:
+        results['amputator'] = amputator.get_telemetry()
+    
     if verbose:
         print(f"\n  {'='*60}")
         print(f"  GENERATION SUMMARY")
@@ -312,6 +369,12 @@ def generate_with_orthocache(
         print(f"  Prefill eviction: {prefill_eviction*100:.1f}%")
         if h_scores_per_step:
             print(f"  H_score range: [{min(h_scores_per_step):.4f}, {max(h_scores_per_step):.4f}]")
+        if clutch is not None:
+            ct = clutch.get_telemetry()
+            print(f"  [PLATINUM 2] Alpha range: [{ct['alpha_min']:.4f}, {ct['alpha_max']:.4f}] (mean={ct['alpha_mean']:.4f})")
+        if amputator is not None:
+            at = amputator.get_telemetry()
+            print(f"  [PLATINUM 3] Interventions: {at['triggered_count']}/{at['total_steps']} steps")
         print(f"\n  Output: {generated_text}")
     
     return results
@@ -339,6 +402,10 @@ def main():
                         help="Filler repetitions for needle test")
     parser.add_argument("--compare", action="store_true",
                         help="Compare dense vs OrthoCache generation")
+    parser.add_argument("--auto-clutch", action="store_true",
+                        help="Platinum 2: Autonomous regime switching")
+    parser.add_argument("--amputate", action="store_true",
+                        help="Platinum 3: Active hallucination suppression")
     parser.add_argument("--output", type=str, default=None,
                         help="Save results to JSON file")
     args = parser.parse_args()
@@ -392,6 +459,8 @@ def main():
         device=args.device,
         temperature=args.temperature,
         top_p=args.top_p,
+        auto_clutch=args.auto_clutch,
+        amputate=args.amputate,
     )
     
     # Optional: compare with dense baseline

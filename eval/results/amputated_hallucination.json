@@ -1,0 +1,97 @@
+{
+  "prompt": "The quick brown fox jumps over the lazy dog near the riverbank. Meanwhile, birds chirped melodiously in the distant oak trees. The wind carried leaves across the meadow as clouds drifted. Sunlight fil",
+  "generated_text": "a combination of numbers and letters.",
+  "prompt_tokens": 1015,
+  "generated_tokens": 8,
+  "tau": 1.06,
+  "alpha": 0.0,
+  "prefill_time_ms": 9089.44,
+  "prefill_eviction_rate": 0.5152,
+  "decode_time_total_ms": 4064.86,
+  "decode_time_per_token_ms": 580.69,
+  "decode_times_ms": [
+    474.21,
+    422.15,
+    606.87,
+    833.98,
+    759.55,
+    399.3,
+    568.81
+  ],
+  "h_scores_per_step": [
+    0.02482,
+    0.024248,
+    0.023367,
+    0.027248,
+    0.025812,
+    0.026456,
+    0.024361
+  ],
+  "norm_cache_populated": true,
+  "amputator": {
+    "h_threshold": 0.028,
+    "lam": 500.0000000000004,
+    "total_steps": 7,
+    "triggered_count": 0,
+    "triggered_rate": 0.0,
+    "active": false,
+    "interventions": [
+      {
+        "step": 1,
+        "h_score": 0.024820040238517915,
+        "t_base": 0.7,
+        "t_safe": 0.7,
+        "intervention": false,
+        "reason": "warmup"
+      },
+      {
+        "step": 2,
+        "h_score": 0.024248492215196493,
+        "t_base": 0.7,
+        "t_safe": 0.7,
+        "intervention": false,
+        "reason": "warmup"
+      },
+      {
+        "step": 3,
+        "h_score": 0.023367,
+        "t_base": 0.7,
+        "t_safe": 0.7,
+        "delta_h": 0.0,
+        "intervention": false
+      },
+      {
+        "step": 4,
+        "h_score": 0.027248,
+        "t_base": 0.7,
+        "t_safe": 0.7,
+        "delta_h": 0.0,
+        "intervention": false
+      },
+      {
+        "step": 5,
+        "h_score": 0.025812,
+        "t_base": 0.7,
+        "t_safe": 0.7,
+        "delta_h": 0.0,
+        "intervention": false
+      },
+      {
+        "step": 6,
+        "h_score": 0.026456,
+        "t_base": 0.7,
+        "t_safe": 0.7,
+        "delta_h": 0.0,
+        "intervention": false
+      },
+      {
+        "step": 7,
+        "h_score": 0.024361,
+        "t_base": 0.7,
+        "t_safe": 0.7,
+        "delta_h": 0.0,
+        "intervention": false
+      }
+    ]
+  }
+}
