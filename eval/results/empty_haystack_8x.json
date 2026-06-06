@@ -1,0 +1,29 @@
+{
+  "prompt": "The quick brown fox jumps over the lazy dog near the riverbank. Meanwhile, birds chirped melodiously in the distant oak trees. The wind carried leaves across the meadow as clouds drifted. Sunlight fil",
+  "generated_text": "\"3425\".",
+  "prompt_tokens": 1015,
+  "generated_tokens": 7,
+  "tau": 1.06,
+  "alpha": 0.0,
+  "prefill_time_ms": 5490.85,
+  "prefill_eviction_rate": 0.5152,
+  "decode_time_total_ms": 2068.72,
+  "decode_time_per_token_ms": 344.79,
+  "decode_times_ms": [
+    268.37,
+    373.0,
+    365.77,
+    431.92,
+    335.19,
+    294.48
+  ],
+  "h_scores_per_step": [
+    0.026056,
+    0.027361,
+    0.028632,
+    0.029479,
+    0.029871,
+    0.025722
+  ],
+  "norm_cache_populated": true
+}
