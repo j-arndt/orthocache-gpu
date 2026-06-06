@@ -553,10 +553,7 @@ class OrthoCache_GQA_Attention:
         else:
             tau_effective = self.tau
         
-        # Walsh matrix for Q FWHT only (single vector, trivial)
-        W = generate_walsh_matrix(tile_size).to(key.device).float()
-        high_start = (tile_size * 3) // 4
-        high_end = tile_size
+        # Decode gate constants
         num_tiles = seq_len_kv // tile_size
         norm_factor = float(tile_size * head_dim)
         
@@ -585,24 +582,18 @@ class OrthoCache_GQA_Attention:
                 q_group_start = kv_h * G
                 q_group_end = q_group_start + G
                 
-                # Compute Q high-band norm (single vector — nanoseconds)
-                # Use median across G heads for robustness
+                # Compute Q spatial L2 norm (matching prefill path)
+                # CS bound: |Q · K_high| ≤ ||Q||₂ · ||K_high||_F
                 q_norms_group = []
                 for g in range(G):
                     qh = q_group_start + g
                     q_vec = q_b[qh, 0, :]  # (head_dim,)
-                    # Q FWHT: pad to tile_size if head_dim != tile_size
-                    if head_dim >= tile_size:
-                        q_tile = q_vec[:tile_size].unsqueeze(0)  # (1, tile_size)
-                    else:
-                        q_tile = torch.zeros(1, tile_size, device=q_vec.device)
-                        q_tile[0, :head_dim] = q_vec
-                    q_spectral = W @ q_tile.T  # (tile_size, 1)
-                    q_high = q_spectral[high_start:high_end, 0]
-                    q_high_norm = torch.norm(q_high).item()
-                    q_norms_group.append(q_high_norm)
+                    q_norm = torch.norm(q_vec).item()
+                    q_norms_group.append(q_norm)
                 
-                max_q_norm = max(q_norms_group)
+                # Use median for robustness (matching prefill)
+                q_norms_sorted = sorted(q_norms_group)
+                max_q_norm = q_norms_sorted[len(q_norms_sorted) // 2]  # median
                 if max_q_norm > max_q_high_batch:
                     max_q_high_batch = max_q_norm
                 
