@@ -34,6 +34,7 @@ def orthocache_forward(
     zeta_max: float = 5.0,
     tau: float | None = None,
     mode: str = 'compact',
+    crossover_threshold: int = 0,
 ) -> tuple[torch.Tensor, dict]:
     """Full OrthoCache pipeline: spectral analysis → eviction → attention.
 
@@ -60,6 +61,8 @@ def orthocache_forward(
               eviction logic. For comparison only.
             - 'triton_fused': Phase 7 God Kernel. Fused FWHT + ζ + attention
               in a single Triton kernel launch. Uses TILE_SIZE=64.
+        crossover_threshold: Context length below which eviction is bypassed
+            and dense attention is used (default: 4096).
 
     Returns:
         Tuple of (output, metadata):
@@ -70,8 +73,18 @@ def orthocache_forward(
     seq_len_q = q.shape[0]
     num_blocks = seq_len_k // block_size
 
+    # Check for adaptive crossover fallback (short sequences bypass eviction)
+    crossover_fallback = False
+    original_mode = mode
+    if seq_len_k < crossover_threshold and mode in ('compact', 'triton_fused'):
+        mode = 'dense'
+        crossover_fallback = True
+
     metadata = {
-        'mode': mode,
+        'mode': original_mode,
+        'actual_mode': mode,
+        'crossover_fallback': crossover_fallback,
+        'crossover_threshold': crossover_threshold,
         'seq_len_q': seq_len_q,
         'seq_len_k': seq_len_k,
         'num_blocks': num_blocks,

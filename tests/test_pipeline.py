@@ -223,3 +223,41 @@ class TestAutoTau:
 
         assert meta['tau_auto'] is False
         assert meta['tau'] == 0.5
+
+
+# ── Crossover Dispatcher ────────────────────────────────────────────────────
+
+
+class TestCrossoverDispatcher:
+    """Tests for the Adaptive Crossover Dispatcher fallback."""
+
+    def test_crossover_fallback_triggered(self):
+        """When seq_len_k < crossover_threshold, fallback to dense attention."""
+        # 1 block = 512 tokens
+        num_blocks = 1
+        q, keys, values = _make_tensors(num_blocks)
+
+        # Set threshold high so 512 is below it
+        output, meta = orthocache_forward(
+            q, keys, values, block_size=BLOCK_SIZE,
+            mode='compact', crossover_threshold=1024,
+        )
+
+        assert meta['crossover_fallback'] is True
+        assert meta['actual_mode'] == 'dense'
+        assert meta['mode'] == 'compact'  # original mode preserved
+        assert meta['eviction_rate'] == 0.0
+
+    def test_crossover_fallback_not_triggered(self):
+        """When seq_len_k >= crossover_threshold, do not fallback."""
+        num_blocks = 2  # 1024 tokens
+        q, keys, values = _make_tensors(num_blocks)
+
+        # Set threshold low so 1024 is above/equal to it
+        output, meta = orthocache_forward(
+            q, keys, values, block_size=BLOCK_SIZE,
+            mode='compact', crossover_threshold=512,
+        )
+
+        assert meta['crossover_fallback'] is False
+        assert meta['actual_mode'] == 'compact'
