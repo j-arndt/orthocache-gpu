@@ -44,6 +44,8 @@ import torch.nn.functional as F
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+from orthocache_gpu.norm_cache import SpectralNormCache
+
 
 # ============================================================================
 # Spectral Analysis Utilities
@@ -328,6 +330,7 @@ class OrthoCache_GQA_Attention:
         self.tau = tau
         self.verbose = verbose
         self.governor = governor
+        self.norm_cache = None  # Gold 1: SpectralNormCache, populated on first prefill
         self.stats = {
             'total_tiles': 0,
             'evicted_tiles': 0,
@@ -337,6 +340,10 @@ class OrthoCache_GQA_Attention:
             'hallucination_scores': [],   # H_score per layer
             'q_search_intensity': [],     # max ||Q_high||₂ per layer
             'k_info_density': [],         # max ||K_high||_F per layer
+            # Gold 1: Decode phase telemetry
+            'decode_steps': 0,
+            'decode_tiles_skipped': 0,
+            'decode_tiles_total': 0,
         }
 
     def reset_stats(self):
@@ -348,6 +355,9 @@ class OrthoCache_GQA_Attention:
             'hallucination_scores': [],
             'q_search_intensity': [],
             'k_info_density': [],
+            'decode_steps': 0,
+            'decode_tiles_skipped': 0,
+            'decode_tiles_total': 0,
         }
 
     @property
@@ -358,18 +368,24 @@ class OrthoCache_GQA_Attention:
 
     def orthocache_attention(
         self,
-        query: torch.Tensor,    # (batch, num_q_heads, seq_len, head_dim)
-        key: torch.Tensor,      # (batch, num_kv_heads, seq_len, head_dim)
-        value: torch.Tensor,    # (batch, num_kv_heads, seq_len, head_dim)
+        query: torch.Tensor,    # (batch, num_q_heads, seq_len_q, head_dim)
+        key: torch.Tensor,      # (batch, num_kv_heads, seq_len_kv, head_dim)
+        value: torch.Tensor,    # (batch, num_kv_heads, seq_len_kv, head_dim)
         num_query_groups: int,
     ) -> torch.Tensor:
-        """Replace standard attention with OrthoCache spectral eviction."""
-        batch_size, num_q_heads, seq_len, head_dim = query.shape
+        """Replace standard attention with OrthoCache spectral eviction.
+        
+        Routes between PREFILL and DECODE based on query sequence length:
+        - seq_len_q > 1: PREFILL — full FWHT, populate norm cache
+        - seq_len_q == 1: DECODE — O(1) gate from norm cache (Gold 1)
+        """
+        batch_size, num_q_heads, seq_len_q, head_dim = query.shape
+        seq_len_kv = key.shape[2]
         num_kv_heads = key.shape[1]
         G = num_query_groups
         tile_size = 64
 
-        if seq_len < tile_size:
+        if seq_len_kv < tile_size:
             # Too short for tiling — fall back to standard attention
             k_expanded = key.repeat_interleave(G, dim=1)
             v_expanded = value.repeat_interleave(G, dim=1)
@@ -377,6 +393,16 @@ class OrthoCache_GQA_Attention:
                 query, k_expanded, v_expanded, is_causal=True,
             ) if hasattr(F.scaled_dot_product_attention, '__wrapped__') else \
                 self._dense_attention(query, key, value, G)
+
+        # ====================================================================
+        # DECODE PATH: O(1) gate from SpectralNormCache (Gold 1)
+        # ====================================================================
+        if seq_len_q == 1 and self.norm_cache is not None and self.norm_cache.is_populated:
+            return self._decode_attention(query, key, value, G)
+
+        # ====================================================================
+        # PREFILL PATH: Full FWHT + populate norm cache
+        # ====================================================================
 
         # Governor: compute tau_effective for this layer
         if self.governor is not None:
@@ -387,9 +413,9 @@ class OrthoCache_GQA_Attention:
         all_batch_outputs = []
 
         for b in range(batch_size):
-            q_b = query[b].float()   # (num_q_heads, seq_len, head_dim)
-            k_b = key[b].float()     # (num_kv_heads, seq_len, head_dim)
-            v_b = value[b].float()   # (num_kv_heads, seq_len, head_dim)
+            q_b = query[b].float()   # (num_q_heads, seq_len_q, head_dim)
+            k_b = key[b].float()     # (num_kv_heads, seq_len_kv, head_dim)
+            v_b = value[b].float()   # (num_kv_heads, seq_len_kv, head_dim)
 
             # Expand KV heads
             k_expanded = k_b.repeat_interleave(G, dim=0)
@@ -398,10 +424,10 @@ class OrthoCache_GQA_Attention:
             scale = 1.0 / math.sqrt(head_dim)
             logits = torch.matmul(q_b, k_expanded.transpose(-2, -1)) * scale
 
-            # Causal mask
+            # Causal mask (seq_len_q × seq_len_kv)
             causal_mask = torch.triu(
-                torch.ones(seq_len, seq_len, device=query.device, dtype=torch.bool),
-                diagonal=1,
+                torch.ones(seq_len_q, seq_len_kv, device=query.device, dtype=torch.bool),
+                diagonal=1 + (seq_len_kv - seq_len_q),
             )
             logits.masked_fill_(causal_mask.unsqueeze(0), float('-inf'))
 
@@ -409,7 +435,7 @@ class OrthoCache_GQA_Attention:
             W = generate_walsh_matrix(tile_size).to(key.device).float()
             high_start = (tile_size * 3) // 4
             high_end = tile_size
-            num_tiles = seq_len // tile_size
+            num_tiles = seq_len_kv // tile_size
             norm_factor = float(tile_size * head_dim)
 
             tiles_evicted_this_batch = 0
@@ -420,10 +446,10 @@ class OrthoCache_GQA_Attention:
             max_k_high_batch = 0.0
 
             for kv_h in range(num_kv_heads):
-                k_h = k_b[kv_h]  # (seq_len, head_dim)
+                k_h = k_b[kv_h]  # (seq_len_kv, head_dim)
                 q_group_start = kv_h * G
                 q_group_end = q_group_start + G
-                q_group = q_b[q_group_start:q_group_end]  # (G, seq_len, head_dim)
+                q_group = q_b[q_group_start:q_group_end]  # (G, seq_len_q, head_dim)
 
                 # Precompute median Q norms per head
                 q_norms = torch.norm(q_group, p=2, dim=-1)  # (G, seq_len)
@@ -437,6 +463,14 @@ class OrthoCache_GQA_Attention:
                     k_spectral = W @ k_tile
                     k_high = k_spectral[high_start:high_end]
                     k_high_norm = torch.norm(k_high, p='fro').item()
+
+                    # Gold 1: Populate norm cache during prefill
+                    if self.norm_cache is not None:
+                        self.norm_cache.cache[kv_h, t] = k_high_norm
+                        self.norm_cache.valid_tiles[kv_h] = max(
+                            self.norm_cache.valid_tiles[kv_h].item(), t + 1
+                        )
+                        self.norm_cache._populated = True
 
                     max_q_norm = q_norm_median.max().item()
                     cs_bound = (max_q_norm * k_high_norm) / norm_factor
@@ -490,16 +524,146 @@ class OrthoCache_GQA_Attention:
         self.stats['layers_processed'] += 1
         return torch.stack(all_batch_outputs, dim=0)
 
+    def _decode_attention(
+        self,
+        query: torch.Tensor,    # (batch, num_q_heads, 1, head_dim)
+        key: torch.Tensor,      # (batch, num_kv_heads, seq_len_kv, head_dim)
+        value: torch.Tensor,    # (batch, num_kv_heads, seq_len_kv, head_dim)
+        G: int,
+    ) -> torch.Tensor:
+        """Gold 1: O(1) Decode Gate — FWHT-free attention using cached norms.
+        
+        During autoregressive decode, the K-cache is STATIC (past tokens never
+        change). Instead of recomputing the O(N log N) FWHT on every decode step,
+        we look up the precomputed ||K_high||_F scalar from the norm cache.
+        
+        This skips BOTH the K load AND V load for evicted tiles, saving 100%
+        bandwidth (vs 33% in the prefill path which only skips V).
+        """
+        batch_size = query.shape[0]
+        num_q_heads = query.shape[1]
+        head_dim = query.shape[3]
+        seq_len_kv = key.shape[2]
+        num_kv_heads = key.shape[1]
+        tile_size = 64
+        
+        # Governor: compute tau_effective
+        if self.governor is not None:
+            tau_effective = self.governor.get_tau_effective(self.tau)
+        else:
+            tau_effective = self.tau
+        
+        # Walsh matrix for Q FWHT only (single vector, trivial)
+        W = generate_walsh_matrix(tile_size).to(key.device).float()
+        high_start = (tile_size * 3) // 4
+        high_end = tile_size
+        num_tiles = seq_len_kv // tile_size
+        norm_factor = float(tile_size * head_dim)
+        
+        all_batch_outputs = []
+        
+        for b in range(batch_size):
+            q_b = query[b].float()   # (num_q_heads, 1, head_dim)
+            k_b = key[b].float()     # (num_kv_heads, seq_len_kv, head_dim)
+            v_b = value[b].float()   # (num_kv_heads, seq_len_kv, head_dim)
+            
+            # Expand KV heads
+            k_expanded = k_b.repeat_interleave(G, dim=0)
+            v_expanded = v_b.repeat_interleave(G, dim=0)
+            
+            scale = 1.0 / math.sqrt(head_dim)
+            # logits: (num_q_heads, 1, seq_len_kv)
+            logits = torch.matmul(q_b, k_expanded.transpose(-2, -1)) * scale
+            
+            tiles_skipped = 0
+            
+            # Gold 3: Track norms for hallucination exhaust
+            max_q_high_batch = 0.0
+            max_k_high_batch = 0.0
+            
+            for kv_h in range(num_kv_heads):
+                q_group_start = kv_h * G
+                q_group_end = q_group_start + G
+                
+                # Compute Q high-band norm (single vector — nanoseconds)
+                # Use median across G heads for robustness
+                q_norms_group = []
+                for g in range(G):
+                    qh = q_group_start + g
+                    q_vec = q_b[qh, 0, :]  # (head_dim,)
+                    # Q FWHT: pad to tile_size if head_dim != tile_size
+                    if head_dim >= tile_size:
+                        q_tile = q_vec[:tile_size].unsqueeze(0)  # (1, tile_size)
+                    else:
+                        q_tile = torch.zeros(1, tile_size, device=q_vec.device)
+                        q_tile[0, :head_dim] = q_vec
+                    q_spectral = W @ q_tile.T  # (tile_size, 1)
+                    q_high = q_spectral[high_start:high_end, 0]
+                    q_high_norm = torch.norm(q_high).item()
+                    q_norms_group.append(q_high_norm)
+                
+                max_q_norm = max(q_norms_group)
+                if max_q_norm > max_q_high_batch:
+                    max_q_high_batch = max_q_norm
+                
+                for t in range(num_tiles):
+                    # ============================================
+                    # O(1) LOOKUP: Read scalar from norm cache
+                    # NO FWHT ON K. NO K TILE LOAD.
+                    # ============================================
+                    k_high_norm = self.norm_cache.get_norm(kv_h, t)
+                    
+                    if k_high_norm > max_k_high_batch:
+                        max_k_high_batch = k_high_norm
+                    
+                    cs_bound = (max_q_norm * k_high_norm) / norm_factor
+                    
+                    if cs_bound <= tau_effective:
+                        # Gate the tile: mask logits to -inf
+                        start = t * tile_size
+                        end = start + tile_size
+                        for g in range(G):
+                            qh = q_group_start + g
+                            logits[qh, 0, start:end] = float('-inf')
+                        tiles_skipped += 1
+            
+            # Gold 3: Hallucination exhaust
+            h_score = max_q_high_batch / (max_k_high_batch + 1e-10)
+            self.stats['hallucination_scores'].append(h_score)
+            self.stats['q_search_intensity'].append(max_q_high_batch)
+            self.stats['k_info_density'].append(max_k_high_batch)
+            
+            # Track decode stats
+            self.stats['decode_steps'] += 1
+            self.stats['decode_tiles_skipped'] += tiles_skipped
+            self.stats['decode_tiles_total'] += num_tiles * num_kv_heads
+            
+            # Report to governor
+            if self.governor is not None and num_tiles > 0:
+                evict_rate = tiles_skipped / (num_tiles * num_kv_heads)
+                self.governor.report_layer(evict_rate)
+            
+            # Softmax + output
+            attn_weights = F.softmax(logits, dim=-1)
+            attn_weights = torch.nan_to_num(attn_weights, nan=0.0)
+            
+            output_b = torch.matmul(attn_weights, v_expanded)
+            all_batch_outputs.append(output_b.to(query.dtype))
+        
+        self.stats['layers_processed'] += 1
+        return torch.stack(all_batch_outputs, dim=0)
+
     def _dense_attention(self, query, key, value, G):
         """Fallback dense causal attention."""
         k_expanded = key.repeat_interleave(G, dim=1)
         v_expanded = value.repeat_interleave(G, dim=1)
         scale = 1.0 / math.sqrt(query.shape[-1])
         logits = torch.matmul(query, k_expanded.transpose(-2, -1)) * scale
-        seq_len = query.shape[2]
+        seq_len_q = query.shape[2]
+        seq_len_kv = key.shape[2]
         mask = torch.triu(
-            torch.ones(seq_len, seq_len, device=query.device, dtype=torch.bool),
-            diagonal=1,
+            torch.ones(seq_len_q, seq_len_kv, device=query.device, dtype=torch.bool),
+            diagonal=1 + (seq_len_kv - seq_len_q),
         )
         logits.masked_fill_(mask.unsqueeze(0).unsqueeze(0), float('-inf'))
         weights = F.softmax(logits, dim=-1)
