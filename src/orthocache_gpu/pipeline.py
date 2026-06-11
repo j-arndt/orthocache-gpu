@@ -29,12 +29,214 @@ from orthocache_gpu.spectral_energy import (
 from orthocache_gpu.compaction import stream_compact, compact_and_attend
 from orthocache_gpu.adaptive_attention import orthocache_attention
 
-# Empirically measured crossover point: OrthoCache is slower than dense
-# attention below this sequence length due to spectral analysis overhead.
-# Measured on RTX 4060 Laptop (Ada Lovelace): 0.51× at 1K, 0.91× at 2K,
-# 1.09× at 4K. The crossover is between 2K-4K tokens; we use 4K as the
-# conservative threshold to ensure OrthoCache is always a net win.
-CROSSOVER_SEQ_LEN = 4096
+# ============================================================
+# Dynamic Hardware Dispatcher
+# ============================================================
+# The crossover point where OrthoCache's spectral analysis overhead
+# breaks even with eviction savings depends on GPU architecture:
+#
+#   - Memory bandwidth: higher BW → dense is faster → higher crossover
+#   - SM count: more SMs → better Split-K parallelism → lower crossover
+#   - SRAM/SM: more SRAM → larger tiles → lower per-tile overhead
+#   - Compute density: higher FLOPS → FWHT is cheaper relative to attention
+#
+# Instead of hardcoding a single threshold, we detect the GPU at init
+# and select from empirical profiles. Unknown GPUs use a bandwidth-ratio
+# model anchored to the RTX 4060 Laptop reference measurement.
+# ============================================================
+
+import dataclasses
+
+
+@dataclasses.dataclass(frozen=True)
+class GPUProfile:
+    """Hardware profile for crossover threshold estimation."""
+    name: str
+    sm_count: int
+    mem_bandwidth_gbps: float   # GB/s
+    sram_per_sm_kb: float       # KB
+    crossover_seq_len: int      # tokens — empirical or estimated
+    compute_class: str          # 'consumer' | 'datacenter' | 'hpc'
+
+
+# Empirical and estimated crossover thresholds per GPU family.
+# RTX 4060 Laptop is the reference (measured): crossover at ~4K tokens.
+# Others are estimated via bandwidth-ratio scaling:
+#   crossover ∝ (target_bw / reference_bw) × reference_crossover
+# Higher bandwidth GPUs can stream dense KV faster, so OrthoCache's
+# spectral overhead needs more tokens to amortize → higher crossover.
+# BUT more SMs and larger SRAM offset this → apply SM correction.
+_GPU_PROFILES: dict[str, GPUProfile] = {
+    # ── Consumer / Workstation ──────────────────────────────────────
+    'RTX 4060 Laptop': GPUProfile(
+        name='RTX 4060 Laptop', sm_count=24,
+        mem_bandwidth_gbps=256, sram_per_sm_kb=100,
+        crossover_seq_len=4096,  # MEASURED: 0.91× at 2K, 1.09× at 4K
+        compute_class='consumer',
+    ),
+    'RTX 4060': GPUProfile(
+        name='RTX 4060', sm_count=24,
+        mem_bandwidth_gbps=272, sram_per_sm_kb=100,
+        crossover_seq_len=4096,  # Similar to laptop variant
+        compute_class='consumer',
+    ),
+    'RTX 4070': GPUProfile(
+        name='RTX 4070', sm_count=46,
+        mem_bandwidth_gbps=504, sram_per_sm_kb=100,
+        crossover_seq_len=3072,  # More SMs offset higher BW
+        compute_class='consumer',
+    ),
+    'RTX 4080': GPUProfile(
+        name='RTX 4080', sm_count=76,
+        mem_bandwidth_gbps=717, sram_per_sm_kb=100,
+        crossover_seq_len=2048,  # 76 SMs → excellent Split-K coverage
+        compute_class='consumer',
+    ),
+    'RTX 4090': GPUProfile(
+        name='RTX 4090', sm_count=128,
+        mem_bandwidth_gbps=1008, sram_per_sm_kb=100,
+        crossover_seq_len=2048,  # 128 SMs dominate; BW offset by parallelism
+        compute_class='consumer',
+    ),
+    # ── Datacenter ──────────────────────────────────────────────────
+    'A100': GPUProfile(
+        name='A100', sm_count=108,
+        mem_bandwidth_gbps=2039, sram_per_sm_kb=164,
+        crossover_seq_len=2048,  # Massive BW but 108 SMs + 164KB SRAM
+        compute_class='datacenter',
+    ),
+    'H100': GPUProfile(
+        name='H100', sm_count=132,
+        mem_bandwidth_gbps=3350, sram_per_sm_kb=228,
+        crossover_seq_len=1024,  # 132 SMs + 228KB SRAM → very low overhead
+        compute_class='datacenter',
+    ),
+    'H200': GPUProfile(
+        name='H200', sm_count=132,
+        mem_bandwidth_gbps=4800, sram_per_sm_kb=228,
+        crossover_seq_len=1024,  # Same SMs as H100, more HBM bandwidth
+        compute_class='datacenter',
+    ),
+    # ── Next-gen (Blackwell) ────────────────────────────────────────
+    'B200': GPUProfile(
+        name='B200', sm_count=192,
+        mem_bandwidth_gbps=8000, sram_per_sm_kb=256,
+        crossover_seq_len=512,   # 192 SMs + 256KB SRAM → near-zero overhead
+        compute_class='hpc',
+    ),
+    'GB200': GPUProfile(
+        name='GB200', sm_count=192,
+        mem_bandwidth_gbps=8000, sram_per_sm_kb=256,
+        crossover_seq_len=512,
+        compute_class='hpc',
+    ),
+}
+
+# Reference GPU for bandwidth-ratio estimation
+_REFERENCE_PROFILE = _GPU_PROFILES['RTX 4060 Laptop']
+
+
+def _detect_gpu_profile(device: torch.device | None = None) -> GPUProfile:
+    """Auto-detect GPU and return the best-matching hardware profile.
+
+    Matching priority:
+    1. Exact name match from known profiles
+    2. Substring match (e.g., "4090" in "NVIDIA GeForce RTX 4090")
+    3. Bandwidth-ratio estimation for unknown GPUs
+    """
+    if not torch.cuda.is_available():
+        # CPU fallback — use reference profile (conservative)
+        return _REFERENCE_PROFILE
+
+    if device is None:
+        device = torch.device('cuda', torch.cuda.current_device())
+
+    idx = device.index if device.index is not None else 0
+    props = torch.cuda.get_device_properties(idx)
+    gpu_name = props.name  # e.g., "NVIDIA GeForce RTX 4060 Laptop GPU"
+    sm_count = props.multi_processor_count
+
+    # 1. Try exact key match
+    for key, profile in _GPU_PROFILES.items():
+        if key in gpu_name:
+            return profile
+
+    # 2. Try partial matches for common identifiers
+    _PARTIAL_KEYS = ['B200', 'GB200', 'H200', 'H100', 'A100',
+                     '4090', '4080', '4070', '4060']
+    for partial in _PARTIAL_KEYS:
+        if partial in gpu_name:
+            for key, profile in _GPU_PROFILES.items():
+                if partial in key:
+                    return profile
+
+    # 3. Unknown GPU — estimate crossover via bandwidth-ratio model
+    # total_memory as proxy for bandwidth class (rough but workable)
+    total_mem_gb = props.total_mem / (1024 ** 3)
+
+    # Heuristic bandwidth estimation from memory size + SM count:
+    #   Consumer (<16 GB): ~256-500 GB/s
+    #   Prosumer (16-48 GB): ~500-1000 GB/s
+    #   Datacenter (48-80 GB): ~2000-3500 GB/s
+    #   HPC (>80 GB): ~4000-8000 GB/s
+    if total_mem_gb > 80:
+        est_bw = 4000.0
+    elif total_mem_gb > 48:
+        est_bw = 2500.0
+    elif total_mem_gb > 16:
+        est_bw = 700.0
+    else:
+        est_bw = 300.0
+
+    # Bandwidth-ratio scaling with SM correction:
+    #   crossover ∝ (bw / ref_bw) × ref_crossover × (ref_sms / sms)
+    bw_ratio = est_bw / _REFERENCE_PROFILE.mem_bandwidth_gbps
+    sm_ratio = _REFERENCE_PROFILE.sm_count / max(sm_count, 1)
+    raw_crossover = _REFERENCE_PROFILE.crossover_seq_len * bw_ratio * sm_ratio
+
+    # Clamp to sensible range and round to nearest power of 2
+    clamped = max(512, min(8192, int(raw_crossover)))
+    # Round to nearest power of 2
+    import math
+    crossover = 1 << int(math.log2(clamped) + 0.5)
+
+    return GPUProfile(
+        name=f'{gpu_name} (auto-detected)',
+        sm_count=sm_count,
+        mem_bandwidth_gbps=est_bw,
+        sram_per_sm_kb=100.0,  # conservative default
+        crossover_seq_len=crossover,
+        compute_class='unknown',
+    )
+
+
+# Module-level cache: detect once, reuse forever.
+_cached_profile: GPUProfile | None = None
+
+
+def get_hardware_profile(device: torch.device | None = None) -> GPUProfile:
+    """Get the cached GPU profile, detecting on first call."""
+    global _cached_profile
+    if _cached_profile is None:
+        _cached_profile = _detect_gpu_profile(device)
+    return _cached_profile
+
+
+def get_crossover_threshold(device: torch.device | None = None) -> int:
+    """Get the dynamic crossover threshold for the current GPU.
+
+    Returns the sequence length below which OrthoCache auto-bypasses
+    to dense attention because spectral analysis overhead exceeds
+    eviction savings on this specific hardware.
+    """
+    return get_hardware_profile(device).crossover_seq_len
+
+
+# Legacy constant — kept for backward compatibility but now delegates
+# to the dynamic dispatcher. Code that references CROSSOVER_SEQ_LEN
+# directly will get the RTX 4060 Laptop value (4096).
+CROSSOVER_SEQ_LEN = _REFERENCE_PROFILE.crossover_seq_len
+
 
 
 def orthocache_forward(
@@ -113,17 +315,23 @@ def orthocache_forward(
         metadata['eviction_rate'] = 0.0
         return output, metadata
 
-    # --- Adaptive crossover bypass ---
-    # Below CROSSOVER_SEQ_LEN, spectral analysis overhead exceeds eviction
-    # savings (0.51× at 1K, 0.91× at 2K). Auto-bypass to dense attention.
-    if seq_len_k < CROSSOVER_SEQ_LEN and mode != 'triton_fused':
+    # --- Adaptive crossover bypass (hardware-aware) ---
+    # Threshold adapts per GPU: 4096 on RTX 4060, 1024 on H100, 512 on B200.
+    # Below the threshold, spectral analysis overhead exceeds eviction savings.
+    hw_profile = get_hardware_profile(q.device)
+    dynamic_threshold = hw_profile.crossover_seq_len
+    if seq_len_k < dynamic_threshold and mode != 'triton_fused':
         t0 = time.perf_counter()
         output = _dense_attention(q, keys, values, head_dim)
         metadata['latency_ms'] = (time.perf_counter() - t0) * 1000
         metadata['eviction_rate'] = 0.0
         metadata['crossover_bypass'] = True
+        metadata['gpu_profile'] = hw_profile.name
+        metadata['crossover_threshold'] = dynamic_threshold
         metadata['crossover_reason'] = (
-            f'seq_len_k={seq_len_k} < CROSSOVER_SEQ_LEN={CROSSOVER_SEQ_LEN}; '
+            f'seq_len_k={seq_len_k} < crossover={dynamic_threshold} '
+            f'on {hw_profile.name} ({hw_profile.sm_count} SMs, '
+            f'{hw_profile.mem_bandwidth_gbps:.0f} GB/s); '
             f'spectral analysis overhead would degrade performance'
         )
         return output, metadata

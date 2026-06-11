@@ -31,9 +31,12 @@ __all__ = [
     # Adaptive Attention
     "orthocache_attention",
     "orthocache_attention_batched",
-    # Pipeline
+    # Pipeline + Hardware Dispatcher
     "orthocache_forward",
     "CROSSOVER_SEQ_LEN",
+    "GPUProfile",
+    "get_hardware_profile",
+    "get_crossover_threshold",
     # Bandwidth Model
     "ici_bytes_per_step",
     "ici_bandwidth_table",
@@ -81,8 +84,14 @@ from orthocache_gpu.adaptive_attention import (
     orthocache_attention_batched,
 )
 
-# ── Pipeline: End-to-End Forward Pass ───────────────────────────────
-from orthocache_gpu.pipeline import orthocache_forward, CROSSOVER_SEQ_LEN
+# ── Pipeline: End-to-End Forward Pass + Dynamic Hardware Dispatcher ──
+from orthocache_gpu.pipeline import (
+    orthocache_forward,
+    CROSSOVER_SEQ_LEN,
+    GPUProfile,
+    get_hardware_profile,
+    get_crossover_threshold,
+)
 
 # ── Infrastructure: Bandwidth Model ─────────────────────────────────
 from orthocache_gpu.bandwidth_model import (
