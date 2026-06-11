@@ -31,6 +31,9 @@ from orthocache_gpu.triton_kernels.fused_eviction import (
     fused_orthocache_attention,
     fused_orthocache_attention_v2,
 )
+from orthocache_gpu.triton_kernels.paged_eviction import (
+    fused_orthocache_attention_paged,
+)
 
 __all__ = [
     "triton_block_sparse_attention",
@@ -39,4 +42,6 @@ __all__ = [
     "generate_walsh_matrix",
     "fused_orthocache_attention",
     "fused_orthocache_attention_v2",
+    "fused_orthocache_attention_paged",
 ]
+

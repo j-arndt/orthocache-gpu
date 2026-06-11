@@ -516,6 +516,7 @@ def fused_orthocache_attention_v3_gqa(
     num_query_groups: int,
     num_splits: Optional[int] = None,
     tile_size: int = TILE_SIZE,
+    k_scale: float = 1.0,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
     """V3 GQA Kernel: Cauchy-Schwarz spectral gate + Split-K attention.
 
@@ -534,6 +535,7 @@ def fused_orthocache_attention_v3_gqa(
         num_query_groups: G — number of query heads per KV head.
         num_splits: Split-K partitions. Auto-selected if None.
         tile_size: Tokens per tile (default: 64).
+        k_scale: Scaling factor for FP8 key dequantization. If not 1.0, dequantizes query-side.
 
     Returns:
         Tuple of (output, metadata):
@@ -543,24 +545,40 @@ def fused_orthocache_attention_v3_gqa(
     num_kv_heads, seq_len, head_dim = keys.shape
     num_query_heads = q.shape[0]
     G = num_query_groups
+    num_tiles = seq_len // tile_size
 
+    # Robustness assertions
+    assert (head_dim & (head_dim - 1)) == 0 and head_dim > 0, f"head_dim ({head_dim}) must be a power of 2"
+    assert (tile_size & (tile_size - 1)) == 0 and tile_size > 0, f"tile_size ({tile_size}) must be a power of 2"
     assert num_query_heads == num_kv_heads * G, (
         f"num_query_heads ({num_query_heads}) != "
         f"num_kv_heads ({num_kv_heads}) × G ({G})"
     )
-    num_tiles = seq_len // tile_size
     assert seq_len == num_tiles * tile_size, (
         f"seq_len {seq_len} not divisible by tile_size {tile_size}"
     )
+    if num_splits is not None:
+        assert num_splits > 0, f"num_splits ({num_splits}) must be positive"
 
     input_dtype = q.dtype
 
+    # Dequantize keys if they are in FP8 to avoid Triton compiler crashes on Windows
+    if keys.dtype == torch.float8_e4m3fn:
+        keys = keys.to(q.dtype) * k_scale
+        k_scale = 1.0
+
+    # Dequantize using PyTorch-side scaling: q_scaled = q * k_scale
+    if k_scale != 1.0:
+        q = q * k_scale
+
     # ── CPU / no-Triton fallback ──
     if not (HAS_CUDA and HAS_TRITON and q.is_cuda):
+
         out, meta = _pytorch_gqa_cauchy_schwarz_attention(
             q, keys, values, tau, G, tile_size
         )
         return out.to(input_dtype), meta
+
 
     # ── Auto-select num_splits ──
     if num_splits is None:

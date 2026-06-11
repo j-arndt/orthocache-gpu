@@ -106,6 +106,7 @@ if HAS_TRITON:
 
         Kept for correctness comparison against Split-K. Do not use in
         production — does not scale beyond ~4K tokens.
+        # Cache invalidation comment
         """
         pid = tl.program_id(0)  # head index (for multi-head extension)
 
@@ -577,6 +578,7 @@ def fused_orthocache_attention_v2(
     zeta_max: float,
     num_splits: Optional[int] = None,
     tile_size: int = TILE_SIZE,
+    k_scale: float = 1.0,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
     """Split-K God Kernel: multi-head fused FWHT+ζ+attention (Phase 7b).
 
@@ -592,6 +594,7 @@ def fused_orthocache_attention_v2(
         num_splits: Number of Split-K partitions per head. If None,
             auto-selected based on SM count (RTX 4060: up to 24).
         tile_size: Tokens per tile (default: 64).
+        k_scale: Scaling factor for FP8 key dequantization. If not 1.0, dequantizes query-side.
 
     Returns:
         Tuple of (output, metadata):
@@ -602,11 +605,26 @@ def fused_orthocache_attention_v2(
     head_dim = q.shape[-1]
     seq_len = keys.shape[1]
     num_tiles = seq_len // tile_size
+
+    # Robustness assertions
+    assert (head_dim & (head_dim - 1)) == 0 and head_dim > 0, f"head_dim ({head_dim}) must be a power of 2"
+    assert (tile_size & (tile_size - 1)) == 0 and tile_size > 0, f"tile_size ({tile_size}) must be a power of 2"
     assert seq_len == num_tiles * tile_size, (
         f"seq_len {seq_len} not divisible by tile_size {tile_size}"
     )
+    if num_splits is not None:
+        assert num_splits > 0, f"num_splits ({num_splits}) must be positive"
 
     input_dtype = q.dtype
+
+    # Dequantize keys if they are in FP8 to avoid Triton compiler crashes on Windows
+    if keys.dtype == torch.float8_e4m3fn:
+        keys = keys.to(q.dtype) * k_scale
+        k_scale = 1.0
+
+    # Dequantize using PyTorch-side scaling: q_scaled = q * k_scale
+    if k_scale != 1.0:
+        q = q * k_scale
 
     # ── CPU / no-Triton fallback ──
     if not (HAS_CUDA and HAS_TRITON and q.is_cuda):
@@ -614,6 +632,8 @@ def fused_orthocache_attention_v2(
             q, keys, values, zeta_max, tile_size
         )
         return out.to(input_dtype), meta
+
+
 
     # ── Auto-select num_splits ──
     if num_splits is None:
@@ -689,6 +709,7 @@ def fused_orthocache_attention(
     zeta_max: float,
     tile_size: int = TILE_SIZE,
     return_mask: bool = False,
+    k_scale: float = 1.0,
 ) -> Tuple[torch.Tensor, Dict[str, Any]]:
     """Fused FWHT+ζ+attention: the OrthoCache God Kernel.
 
@@ -707,6 +728,7 @@ def fused_orthocache_attention(
             are evicted (skipped entirely — both V load and Q×K^T compute).
         tile_size: Tokens per tile (default: 64).
         return_mask: If True, return the eviction mask in metadata.
+        k_scale: Scaling factor for FP8 key dequantization. If not 1.0, dequantizes query-side.
 
     Returns:
         Tuple of (output, metadata):
@@ -718,11 +740,24 @@ def fused_orthocache_attention(
     head_dim = q.shape[-1]
     num_tokens = keys.shape[0]
     num_tiles = num_tokens // tile_size
+
+    # Robustness assertions
+    assert (head_dim & (head_dim - 1)) == 0 and head_dim > 0, f"head_dim ({head_dim}) must be a power of 2"
+    assert (tile_size & (tile_size - 1)) == 0 and tile_size > 0, f"tile_size ({tile_size}) must be a power of 2"
     assert num_tokens == num_tiles * tile_size, (
         f"seq_len {num_tokens} not divisible by tile_size {tile_size}"
     )
 
     input_dtype = q.dtype
+
+    # Dequantize keys if they are in FP8 to avoid Triton compiler crashes on Windows
+    if keys.dtype == torch.float8_e4m3fn:
+        keys = keys.to(q.dtype) * k_scale
+        k_scale = 1.0
+
+    # Dequantize using PyTorch-side scaling: q_scaled = q * k_scale
+    if k_scale != 1.0:
+        q = q * k_scale
 
     # ── CPU / no-Triton fallback ──
     if not (HAS_CUDA and HAS_TRITON and q.is_cuda):
@@ -730,6 +765,8 @@ def fused_orthocache_attention(
             q, keys, values, zeta_max, tile_size, return_mask
         )
         return out.to(input_dtype), meta
+
+
 
     # ── Prepare inputs ──
     q = q.contiguous()
