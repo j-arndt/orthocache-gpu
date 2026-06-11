@@ -46,6 +46,76 @@ from orthocache_gpu.adaptive_attention import orthocache_attention
 # ============================================================
 
 import dataclasses
+import enum
+
+
+# ============================================================
+# Enterprise Telemetry — Zero-Overhead Bitmask Flags
+# ============================================================
+# In production inference loops, f-string interpolation for logging
+# can consume 2-5 µs per call — enough to neutralize kernel speedups
+# at high QPS. We use IntFlag bitmasks instead: a single int write
+# replaces all string formatting. Human-readable strings are available
+# via format_bypass_reason() for debugging, but never in the hot path.
+# ============================================================
+
+class BypassFlag(enum.IntFlag):
+    """Bitmask flags for bypass/dispatch decisions. Zero-cost hot-path telemetry."""
+    NONE              = 0
+    CROSSOVER_BYPASS  = 1 << 0   # seq_len < crossover → dense fallback
+    DENSE_EXPLICIT    = 1 << 1   # mode='dense' requested explicitly
+    TRITON_FUSED      = 1 << 2   # mode='triton_fused'
+    SPECTRAL_EVICTION = 1 << 3   # full spectral analysis path
+    ZERO_ACTIVE       = 1 << 4   # all blocks evicted → zero output
+    TAU_AUTO          = 1 << 5   # tau was auto-computed
+    PERFECT_EVICTION  = 1 << 6   # at least one block was perfectly evicted
+    HW_AUTO_DETECTED  = 1 << 7   # GPU was auto-detected (not from known list)
+
+
+class TelemetryLevel(enum.IntEnum):
+    """Controls metadata verbosity in the inference hot path.
+
+    SILENT:  No metadata dict at all — maximum throughput.
+    FLAGS:   Bitmask flags + numeric scalars only. No strings. (default)
+    VERBOSE: Full metadata with human-readable strings. For debugging.
+    """
+    SILENT  = 0
+    FLAGS   = 1
+    VERBOSE = 2
+
+
+def format_bypass_reason(
+    flags: BypassFlag,
+    seq_len_k: int = 0,
+    threshold: int = 0,
+    profile: 'GPUProfile | None' = None,
+) -> str:
+    """Lazy string formatter for bypass telemetry. Call ONLY for debugging.
+
+    This function is never invoked in the hot path. It converts bitmask
+    flags into the human-readable strings that were previously computed
+    via f-string interpolation on every forward pass.
+    """
+    parts = []
+    if flags & BypassFlag.CROSSOVER_BYPASS:
+        p = f'seq_len_k={seq_len_k} < crossover={threshold}'
+        if profile:
+            p += f' on {profile.name} ({profile.sm_count} SMs, {profile.mem_bandwidth_gbps:.0f} GB/s)'
+        parts.append(p)
+    if flags & BypassFlag.DENSE_EXPLICIT:
+        parts.append('mode=dense (explicit)')
+    if flags & BypassFlag.TRITON_FUSED:
+        parts.append('mode=triton_fused (God Kernel)')
+    if flags & BypassFlag.SPECTRAL_EVICTION:
+        parts.append('full spectral eviction path')
+    if flags & BypassFlag.ZERO_ACTIVE:
+        parts.append('all blocks evicted')
+    if flags & BypassFlag.TAU_AUTO:
+        parts.append('tau auto-computed (mean - 1σ)')
+    if flags & BypassFlag.HW_AUTO_DETECTED:
+        parts.append('GPU auto-detected via bandwidth-ratio model')
+    return '; '.join(parts) if parts else 'no flags set'
+
 
 
 @dataclasses.dataclass(frozen=True)
@@ -248,6 +318,7 @@ def orthocache_forward(
     tau: float | None = None,
     mode: str = 'compact',
     crossover_threshold: int = 0,
+    telemetry: TelemetryLevel = TelemetryLevel.FLAGS,
 ) -> tuple[torch.Tensor, dict]:
     """Full OrthoCache pipeline: spectral analysis → eviction → attention.
 
@@ -275,12 +346,19 @@ def orthocache_forward(
             - 'triton_fused': Phase 7 God Kernel. Fused FWHT + ζ + attention
               in a single Triton kernel launch. Uses TILE_SIZE=64.
         crossover_threshold: Context length below which eviction is bypassed
-            and dense attention is used (default: 4096).
+            and dense attention is used (default: auto from hardware profile).
+        telemetry: Controls metadata verbosity:
+            - SILENT: No metadata. Maximum throughput for production.
+            - FLAGS: Bitmask flags + numeric scalars only. No strings. (default)
+            - VERBOSE: Full human-readable metadata. For debugging.
 
     Returns:
         Tuple of (output, metadata):
         - output: Attention result, shape (seq_len_q, num_heads, head_dim).
         - metadata: Dict with timing, eviction stats, ζ distribution.
+          In SILENT mode, metadata is an empty dict.
+          In FLAGS mode, 'bypass_flags' is an int (BypassFlag bitmask).
+          In VERBOSE mode, 'crossover_reason' is a human-readable string.
     """
     seq_len_k, num_heads, head_dim = keys.shape
     seq_len_q = q.shape[0]
@@ -293,19 +371,23 @@ def orthocache_forward(
         mode = 'dense'
         crossover_fallback = True
 
-    metadata = {
-        'mode': original_mode,
-        'actual_mode': mode,
-        'crossover_fallback': crossover_fallback,
-        'crossover_threshold': crossover_threshold,
-        'seq_len_q': seq_len_q,
-        'seq_len_k': seq_len_k,
-        'num_blocks': num_blocks,
-        'num_heads': num_heads,
-        'head_dim': head_dim,
-        'block_size': block_size,
-        'zeta_max': zeta_max,
-    }
+    # --- Metadata construction (telemetry-level gated) ---
+    if telemetry == TelemetryLevel.SILENT:
+        metadata: dict = {}
+    else:
+        metadata = {
+            'mode': original_mode,
+            'actual_mode': mode,
+            'crossover_fallback': crossover_fallback,
+            'crossover_threshold': crossover_threshold,
+            'seq_len_q': seq_len_q,
+            'seq_len_k': seq_len_k,
+            'num_blocks': num_blocks,
+            'num_heads': num_heads,
+            'head_dim': head_dim,
+            'block_size': block_size,
+            'zeta_max': zeta_max,
+        }
 
     # --- Dense baseline ---
     if mode == 'dense':
@@ -323,17 +405,19 @@ def orthocache_forward(
     if seq_len_k < dynamic_threshold and mode != 'triton_fused':
         t0 = time.perf_counter()
         output = _dense_attention(q, keys, values, head_dim)
-        metadata['latency_ms'] = (time.perf_counter() - t0) * 1000
-        metadata['eviction_rate'] = 0.0
-        metadata['crossover_bypass'] = True
-        metadata['gpu_profile'] = hw_profile.name
-        metadata['crossover_threshold'] = dynamic_threshold
-        metadata['crossover_reason'] = (
-            f'seq_len_k={seq_len_k} < crossover={dynamic_threshold} '
-            f'on {hw_profile.name} ({hw_profile.sm_count} SMs, '
-            f'{hw_profile.mem_bandwidth_gbps:.0f} GB/s); '
-            f'spectral analysis overhead would degrade performance'
-        )
+        if telemetry >= TelemetryLevel.FLAGS:
+            flags = BypassFlag.CROSSOVER_BYPASS
+            if hw_profile.compute_class == 'unknown':
+                flags |= BypassFlag.HW_AUTO_DETECTED
+            metadata['latency_ms'] = (time.perf_counter() - t0) * 1000
+            metadata['eviction_rate'] = 0.0
+            metadata['bypass_flags'] = int(flags)
+            metadata['crossover_threshold'] = dynamic_threshold
+            metadata['gpu_profile'] = hw_profile.name
+        if telemetry >= TelemetryLevel.VERBOSE:
+            metadata['crossover_reason'] = format_bypass_reason(
+                flags, seq_len_k, dynamic_threshold, hw_profile
+            )
         return output, metadata
 
     # --- Triton fused: Split-K God Kernel (Phase 7b) ---
