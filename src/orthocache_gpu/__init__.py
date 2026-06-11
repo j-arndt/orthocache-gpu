@@ -33,6 +33,7 @@ __all__ = [
     "orthocache_attention_batched",
     # Pipeline
     "orthocache_forward",
+    "CROSSOVER_SEQ_LEN",
     # Bandwidth Model
     "ici_bytes_per_step",
     "ici_bandwidth_table",
@@ -81,7 +82,7 @@ from orthocache_gpu.adaptive_attention import (
 )
 
 # ── Pipeline: End-to-End Forward Pass ───────────────────────────────
-from orthocache_gpu.pipeline import orthocache_forward
+from orthocache_gpu.pipeline import orthocache_forward, CROSSOVER_SEQ_LEN
 
 # ── Infrastructure: Bandwidth Model ─────────────────────────────────
 from orthocache_gpu.bandwidth_model import (

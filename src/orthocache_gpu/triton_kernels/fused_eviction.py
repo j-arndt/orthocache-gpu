@@ -106,7 +106,6 @@ if HAS_TRITON:
 
         Kept for correctness comparison against Split-K. Do not use in
         production — does not scale beyond ~4K tokens.
-        # Cache invalidation comment
         """
         pid = tl.program_id(0)  # head index (for multi-head extension)
 
@@ -613,14 +612,9 @@ def fused_orthocache_attention_v2(
         f"seq_len {seq_len} not divisible by tile_size {tile_size}"
     )
     if num_splits is not None:
-        assert num_splits > 0, f"num_splits ({num_splits}) must be positive"
+        assert num_splits > 0, f"num_splits ({num_splits}) must be greater than 0"
 
     input_dtype = q.dtype
-
-    # Dequantize keys if they are in FP8 to avoid Triton compiler crashes on Windows
-    if keys.dtype == torch.float8_e4m3fn:
-        keys = keys.to(q.dtype) * k_scale
-        k_scale = 1.0
 
     # Dequantize using PyTorch-side scaling: q_scaled = q * k_scale
     if k_scale != 1.0:
@@ -632,7 +626,6 @@ def fused_orthocache_attention_v2(
             q, keys, values, zeta_max, tile_size
         )
         return out.to(input_dtype), meta
-
 
 
     # ── Auto-select num_splits ──
@@ -750,11 +743,6 @@ def fused_orthocache_attention(
 
     input_dtype = q.dtype
 
-    # Dequantize keys if they are in FP8 to avoid Triton compiler crashes on Windows
-    if keys.dtype == torch.float8_e4m3fn:
-        keys = keys.to(q.dtype) * k_scale
-        k_scale = 1.0
-
     # Dequantize using PyTorch-side scaling: q_scaled = q * k_scale
     if k_scale != 1.0:
         q = q * k_scale
@@ -765,7 +753,6 @@ def fused_orthocache_attention(
             q, keys, values, zeta_max, tile_size, return_mask
         )
         return out.to(input_dtype), meta
-
 
 
     # ── Prepare inputs ──

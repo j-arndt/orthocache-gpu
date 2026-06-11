@@ -174,9 +174,9 @@ $$\Delta\text{CapEx} = \text{CapEx}_{\text{annual}} \cdot \phi_{\text{inf}} \cdo
 
 | Scenario | $S$ | $\Delta\tau$ | Source | Annual OpEx (⊘) | Annual CapEx Deferral (⊘) | **Total (⊘)** |
 |:---|:---:|:---:|:---|:---:|:---:|:---:|
-| **Conservative** | 0.25 | 5% | Projected ⊘ | $2,934,375 | $72,916,675 | **$75,851,050** |
-| **Moderate** | 0.50 | 15% | Measured range ✓ | $5,868,750 | $218,750,025 | **$224,618,775** |
-| **Aggressive** | 0.70 | 25% | Measured range ✓ | $8,216,250 | $364,583,375 | **$372,799,625** |
+| **Conservative** | 0.25 | 5% | Projected ⊘ | $5,859,000 | $72,916,672 | **$78,775,672** |
+| **Moderate** | 0.50 | 15% | Measured range ✓ | $11,719,750 | $218,750,018 | **$230,469,768** |
+| **Aggressive** | 0.70 | 25% | Measured range ✓ | $16,408,000 | $364,583,363 | **$380,991,363** |
 
 ### 4.3 Derivation Trace: Conservative Row ($S = 0.25$, $\Delta\tau = 0.05$)
 
@@ -267,7 +267,7 @@ Using measured RTX 4060 Laptop latency data (✓) to estimate throughput:
 | Google Gemini 2.5 Pro | $1.25 | $10.00 |
 | **Local RTX 4060 + OrthoCache** | **$0.027** | **$0.027** |
 
-Local inference with OrthoCache is **~50–550× cheaper per token** than cloud APIs, making it economically viable for high-volume, latency-tolerant workloads (batch summarization, RAG pipelines, document processing).
+Local inference with OrthoCache is **~46–550× cheaper per token** than cloud APIs, making it economically viable for high-volume, latency-tolerant workloads (batch summarization, RAG pipelines, document processing).
 
 ### 5.4 Battery Impact (Laptop Inference)
 
@@ -356,6 +356,27 @@ The model is most sensitive to three parameters (in order of impact):
 3. **$\phi_{\text{inf}}$ (long-context fraction):** As LLM context windows grow (1M+ tokens becoming standard), $\phi_{\text{inf}}$ trends upward, increasing OrthoCache's relevance.
 
 $S$ and $\gamma_{\text{net}}$ have moderate impact via OpEx, but OpEx savings are typically 1–2 orders of magnitude smaller than CapEx deferral.
+
+> **Blended-workload crossover note.** The fleet savings projections above assume all inference traffic consists of sequences >4K tokens (i.e., the regime where OrthoCache provides a latency benefit). In practice, below ~4K tokens OrthoCache is slower than dense attention: 0.51× at 1K tokens, 0.91× at 2K tokens (Table 3 ✓). A production deployment requires an **adaptive dispatcher** that bypasses OrthoCache for short sequences and engages it only above the ~4K crossover point. The $\phi_{\text{inf}} = 0.35$ parameter partially accounts for this by limiting savings to the long-context fraction, but does not model the latency penalty if OrthoCache were mistakenly applied to short sequences.
+
+### 7.4 Quality-Adjusted Cost Considerations ⊘
+
+The fleet savings projections in §4 and §6 model only the **infrastructure cost** side of deploying OrthoCache. They do not account for the **quality cost** of spectral eviction — the accuracy degradation from discarding KV-cache blocks.
+
+Measured quality impacts at the best operating point (50% eviction, τ = 0.677):
+
+- **Perplexity increase:** PPL 7.74 vs 6.91 dense baseline — a ~12% degradation (Table in §End-to-End Validation ✓)
+- **Reconstruction error:** ~1.0 Frobenius norm at 50% eviction across all sequence lengths (Table 4 ✓)
+- **NIAH retrieval:** Perfect at 73–93% decode skip rate (✓), but only validated on synthetic needle tasks
+
+These quality costs are **not modeled** in the fleet savings projections (Table 5, §6.3). A production cost-benefit analysis should additionally model:
+
+1. **User satisfaction impact:** How does ~12% PPL increase translate to user-perceived quality? Task-dependent — summarization may tolerate more degradation than code generation.
+2. **Task completion rate degradation:** If eviction causes incorrect outputs, users re-submit queries, partially or fully offsetting the throughput gain.
+3. **Cost of re-generation:** Failed completions that require retry consume additional GPU-hours, reducing the effective $\Delta\tau$.
+4. **Quality-adjusted $\Delta\tau$:** The net throughput gain after accounting for re-generation overhead: $\Delta\tau_{\text{adj}} = \Delta\tau \cdot (1 - r_{\text{retry}})$, where $r_{\text{retry}}$ is the retry rate induced by quality degradation.
+
+Until these factors are quantified through A/B testing on production traffic, the fleet savings figures should be interpreted as **upper bounds** on the net economic benefit. ⊘
 
 ---
 

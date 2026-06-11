@@ -31,9 +31,20 @@ class TestUnderflowConstants:
         val = math.exp(-FLOAT32_UNDERFLOW_THRESHOLD)
         # In float64 this is ~3.5e-39, but in float32 it underflows to 0
         assert val < 1e-38
-        # Verify float32 actually flushes to zero (or is subnormal on CPU)
-        val_f32 = np.float32(np.exp(np.float32(-88.73)))
-        assert val_f32 == 0.0 or val_f32 < np.finfo(np.float32).tiny, f"Expected float32 underflow to 0 or subnormal, got {val_f32}"
+        # Verify float32 actually flushes to zero under FTZ
+        try:
+            torch.set_flush_denormal(True)
+        except (ValueError, RuntimeError):
+            pass
+        try:
+            val_f32 = np.float32(np.exp(np.float32(-88.73)))
+            assert val_f32 == 0.0, f"Expected float32 underflow to 0, got {val_f32}"
+        finally:
+            try:
+                torch.set_flush_denormal(False)
+            except (ValueError, RuntimeError):
+                pass
+
 
     def test_bfloat16_underflow_threshold(self):
         """bfloat16 underflow threshold should be slightly lower."""
@@ -171,9 +182,20 @@ class TestClassifyEviction:
         z_max = 100.0
         z_i = 10.0  # z_i - z_max = -90 < -88.72
 
-        # In float32, exp(-90) should be flushed to 0 (or subnormal on CPU)
-        result = np.float32(np.exp(np.float32(z_i - z_max)))
-        assert result == 0.0 or result < np.finfo(np.float32).tiny, f"Expected exact 0.0 or subnormal in float32, got {result}"
+        # In float32 under FTZ, exp(-90) should be flushed to 0
+        try:
+            torch.set_flush_denormal(True)
+        except (ValueError, RuntimeError):
+            pass
+        try:
+            result = np.float32(np.exp(np.float32(z_i - z_max)))
+            assert result == 0.0, f"Expected exact 0.0 in float32, got {result}"
+        finally:
+            try:
+                torch.set_flush_denormal(False)
+            except (ValueError, RuntimeError):
+                pass
+
 
     def test_multi_head_classification(self):
         """Classification should work with multiple heads."""
@@ -200,13 +222,31 @@ class TestDualRegimeCompleteness:
         assert is_perfect != is_statistical, "Exactly one regime must apply"
 
     def test_float32_hardware_verification(self):
-        """Exhaustive check: all gaps ≥ 88.72 produce exact zero in float32."""
-        for gap in [88.72, 89.0, 90.0, 100.0, 150.0, 200.0]:
-            val = np.float32(np.exp(np.float32(-gap)))
-            assert val == 0.0 or val < np.finfo(np.float32).tiny, f"float32 exp(-{gap}) = {val}, expected 0.0 or subnormal"
+        """Exhaustive check: all gaps ≥ 88.72 produce exact zero in float32 under FTZ."""
+        try:
+            torch.set_flush_denormal(True)
+        except (ValueError, RuntimeError):
+            pass
+        try:
+            for gap in [88.72, 89.0, 90.0, 100.0, 150.0, 200.0]:
+                val = np.float32(np.exp(np.float32(-gap)))
+                assert val == 0.0, f"float32 exp(-{gap}) = {val}, expected 0.0"
+        finally:
+            try:
+                torch.set_flush_denormal(False)
+            except (ValueError, RuntimeError):
+                pass
 
     def test_float32_below_threshold_nonzero(self):
-        """Gaps below threshold should produce nonzero float32 values."""
-        for gap in [10.0, 50.0, 80.0, 85.0, 88.0]:
-            val = np.float32(np.exp(np.float32(-gap)))
-            assert val > 0.0, f"float32 exp(-{gap}) should be nonzero, got {val}"
+        """Gaps below threshold should produce nonzero float32 values when FTZ is disabled."""
+        try:
+            torch.set_flush_denormal(False)
+        except (ValueError, RuntimeError):
+            pass
+        try:
+            for gap in [10.0, 50.0, 80.0, 85.0, 88.0]:
+                val = np.float32(np.exp(np.float32(-gap)))
+                assert val > 0.0, f"float32 exp(-{gap}) should be nonzero, got {val}"
+        finally:
+            pass
+

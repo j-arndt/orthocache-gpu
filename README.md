@@ -43,7 +43,7 @@ OrthoCache is a **KV-cache eviction algorithm** that uses spectral analysis (Wal
 git clone https://github.com/j-arndt/orthocache-gpu.git && cd orthocache-gpu
 pip install -e ".[dev]"
 
-# Run the test suite (59 tests)
+# Run the test suite (150 tests)
 pytest
 
 # Run benchmarks (requires CUDA GPU)
@@ -366,7 +366,7 @@ orthocache-gpu/
 │   ├── mathematical_framework.md     # Formal math reference
 │   ├── technical_report.md           # GPU architecture + benchmarks
 │   └── cost_benefit_analysis.md      # Fleet economics + consumer analysis
-├── tests/                            # 59 tests (16 test files)
+├── tests/                            # 150 tests (15 test files)
 ├── benchmarks/
 │   ├── profiling.py                  # Latency sweep benchmarks
 │   ├── profile_fusion.py             # Fused kernel profiling (single-head)

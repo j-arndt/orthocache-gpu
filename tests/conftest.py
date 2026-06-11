@@ -6,6 +6,7 @@ correctness is identical in eager vs compiled mode — compilation only
 affects performance.
 """
 
+import torch
 import torch._dynamo
 
 
@@ -15,3 +16,11 @@ def pytest_configure(config):
     # This lets us test algorithmic correctness on any machine without
     # requiring MSVC (cl.exe) or GCC for the Inductor backend.
     torch._dynamo.config.suppress_errors = True
+    
+    # Enable flush-to-zero (FTZ) for CPU calculations to simulate GPU hardware behavior
+    try:
+        torch.set_flush_denormal(True)
+    except ValueError:
+        # Some CPU architectures/platforms do not support set_flush_denormal
+        pass
+

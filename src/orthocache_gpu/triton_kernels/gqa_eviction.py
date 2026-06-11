@@ -359,16 +359,6 @@ if HAS_TRITON:
         # Process one query head at a time through the tile loop to keep
         # register pressure manageable on Ada Lovelace (255 registers/thread).
 
-        # Precompute the maximum squared query norm across G heads once per CTA (tile-independent)
-        max_q_g_norm_sq = 0.0
-        for g in range(num_query_groups):
-            q_g_offset = q_base + g * head_dim
-            q_g = tl.load(Q_ptr + q_g_offset + col_offsets)
-            q_g = q_g.to(tl.float32)
-            q_g_norm_sq = tl.sum(q_g * q_g)
-            q_g_norm_sq = tl.where(q_g_norm_sq < 1e-38, 0.0, q_g_norm_sq)
-            max_q_g_norm_sq = tl.maximum(max_q_g_norm_sq, q_g_norm_sq)
-
         # ── INTERLEAVED TILE LOOP ──
         for tile_id in range(split_id, num_k_tiles, num_splits):
             kv_base = kv_head_base + tile_id * TILE_SIZE * head_dim
@@ -390,7 +380,17 @@ if HAS_TRITON:
             k_high_energy = tl.where(k_high_energy < 1e-38, 0.0, k_high_energy)
 
             # ── Vectorized Cauchy-Schwarz evaluation across G queries ──
-            max_cs_sq = max_q_g_norm_sq * k_high_energy
+            # For each query head g, compute ‖Q_g‖₂² and check bound
+            max_cs_sq = 0.0
+            for g in range(num_query_groups):
+                q_g_offset = q_base + g * head_dim
+                q_g = tl.load(Q_ptr + q_g_offset + col_offsets)
+                q_g = q_g.to(tl.float32)
+                q_g_norm_sq = tl.sum(q_g * q_g)
+                # Subnormal clamp on query norm too
+                q_g_norm_sq = tl.where(q_g_norm_sq < 1e-38, 0.0, q_g_norm_sq)
+                cs_sq = q_g_norm_sq * k_high_energy
+                max_cs_sq = tl.maximum(max_cs_sq, cs_sq)
 
             # Eviction decision: compare max_cs_sq ≤ τ²
             tau_sq = tau * tau
@@ -558,14 +558,9 @@ def fused_orthocache_attention_v3_gqa(
         f"seq_len {seq_len} not divisible by tile_size {tile_size}"
     )
     if num_splits is not None:
-        assert num_splits > 0, f"num_splits ({num_splits}) must be positive"
+        assert num_splits > 0, f"num_splits ({num_splits}) must be greater than 0"
 
     input_dtype = q.dtype
-
-    # Dequantize keys if they are in FP8 to avoid Triton compiler crashes on Windows
-    if keys.dtype == torch.float8_e4m3fn:
-        keys = keys.to(q.dtype) * k_scale
-        k_scale = 1.0
 
     # Dequantize using PyTorch-side scaling: q_scaled = q * k_scale
     if k_scale != 1.0:
@@ -573,7 +568,6 @@ def fused_orthocache_attention_v3_gqa(
 
     # ── CPU / no-Triton fallback ──
     if not (HAS_CUDA and HAS_TRITON and q.is_cuda):
-
         out, meta = _pytorch_gqa_cauchy_schwarz_attention(
             q, keys, values, tau, G, tile_size
         )

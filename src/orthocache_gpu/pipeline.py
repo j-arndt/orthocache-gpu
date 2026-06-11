@@ -4,6 +4,10 @@ Chains the full OrthoCache flow:
     FWHT → spectral bands → ζ computation → two-gate mask → compaction → attention
 
 This module provides the high-level API that users call. It handles:
+- **Adaptive crossover bypass**: automatically falls back to dense attention
+  for short sequences (< CROSSOVER_SEQ_LEN) where spectral analysis overhead
+  exceeds eviction savings. This prevents performance degradation on short
+  prompts (0.51× at 1K, 0.91× at 2K tokens).
 - Automatic GPU detection and fallback
 - Block size alignment and padding
 - ζ_max auto-calibration hints
@@ -24,6 +28,13 @@ from orthocache_gpu.spectral_energy import (
 )
 from orthocache_gpu.compaction import stream_compact, compact_and_attend
 from orthocache_gpu.adaptive_attention import orthocache_attention
+
+# Empirically measured crossover point: OrthoCache is slower than dense
+# attention below this sequence length due to spectral analysis overhead.
+# Measured on RTX 4060 Laptop (Ada Lovelace): 0.51× at 1K, 0.91× at 2K,
+# 1.09× at 4K. The crossover is between 2K-4K tokens; we use 4K as the
+# conservative threshold to ensure OrthoCache is always a net win.
+CROSSOVER_SEQ_LEN = 4096
 
 
 def orthocache_forward(
@@ -100,6 +111,21 @@ def orthocache_forward(
         output = _dense_attention(q, keys, values, head_dim)
         metadata['latency_ms'] = (time.perf_counter() - t0) * 1000
         metadata['eviction_rate'] = 0.0
+        return output, metadata
+
+    # --- Adaptive crossover bypass ---
+    # Below CROSSOVER_SEQ_LEN, spectral analysis overhead exceeds eviction
+    # savings (0.51× at 1K, 0.91× at 2K). Auto-bypass to dense attention.
+    if seq_len_k < CROSSOVER_SEQ_LEN and mode != 'triton_fused':
+        t0 = time.perf_counter()
+        output = _dense_attention(q, keys, values, head_dim)
+        metadata['latency_ms'] = (time.perf_counter() - t0) * 1000
+        metadata['eviction_rate'] = 0.0
+        metadata['crossover_bypass'] = True
+        metadata['crossover_reason'] = (
+            f'seq_len_k={seq_len_k} < CROSSOVER_SEQ_LEN={CROSSOVER_SEQ_LEN}; '
+            f'spectral analysis overhead would degrade performance'
+        )
         return output, metadata
 
     # --- Triton fused: Split-K God Kernel (Phase 7b) ---

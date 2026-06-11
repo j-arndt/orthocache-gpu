@@ -94,12 +94,12 @@ This yields the exact same result as sequential online softmax — no approximat
 
 | Buffer | Size | Purpose |
 |:---|:---|:---|
-| K tile (64 tokens × 128 dims × fp16) | 16,384 B | Spectral + attention input |
+| K tile (64 tokens × 128 dims × fp32) | 32,768 B | Spectral + attention input (bf16→fp32 on load) |
 | Q vector (1 × 128 dims × fp32) | 512 B | Query (persistent) |
 | W₆₄ spectral coefficients (64 × fp32) | 256 B | Per-column FWHT output |
 | V tile (64 tokens × 128 dims × fp16) | 16,384 B | Value for attention |
 | Partial accumulators (128 × fp32) | 512 B | Online softmax state |
-| **Total peak** | **~34 KB** | Well within 100 KB/SM limit |
+| **Total peak** | **~50 KB** | Well within 100 KB/SM limit |
 
 The 81 KB figure cited elsewhere includes safety margins for Triton's register spill and alignment overhead. The actual measured occupancy confirms the kernel fits comfortably within the SM's shared memory budget.
 
@@ -200,7 +200,7 @@ The fused kernel's key innovation: K tiles are loaded to SRAM once and reused ac
 
 ## §6 Test Suite
 
-The repository includes 47 tests across 14 test files:
+The repository includes 150 tests across 15 test files:
 
 | Test File | Tests | Coverage |
 |:---|:---|:---|
@@ -217,8 +217,10 @@ The repository includes 47 tests across 14 test files:
 | `test_spectral_bands.py` | Multi-band decomposition |
 | `test_adaptive_attention.py` | Adaptive path selection |
 | `test_bandwidth.py` | Bandwidth model |
+| `test_fp8.py` | FP8 quantization |
+| `test_gqa_eviction.py` | GQA Cauchy-Schwarz spectral gate |
 
-All 47 tests pass on the reference hardware (RTX 4060, CUDA 12.4, Triton 3.1).
+All 150 tests pass on the reference hardware (RTX 4060, CUDA 12.4, Triton 3.1).
 
 ---
 
